@@ -21,47 +21,47 @@ import (
 	"github.com/interlynk-io/lynk-mcp/internal/graphql"
 )
 
-// ProjectGroup represents a product/project group
-type ProjectGroup struct {
+// Product represents a product (formerly project group)
+type Product struct {
 	ID             string
 	Name           string
 	Description    string
 	Enabled        bool
 	OrganizationID string
 	UpdatedAt      time.Time
-	SbomsCount     int
-	Projects       []Project
+	VersionsCount  int
+	Environments   []Environment
 }
 
-// Project represents a project/stream
-type Project struct {
-	ID             string
-	Name           string
-	Description    string
-	Enabled        bool
-	ProjectGroupID string
-	UpdatedAt      time.Time
-	SbomsCount     int
-	ProjectGroup   *ProjectGroup
+// Environment represents an environment (formerly project)
+type Environment struct {
+	ID            string
+	Name          string
+	Description   string
+	Enabled       bool
+	ProductID     string
+	UpdatedAt     time.Time
+	VersionsCount int
+	Product       *Product
 }
 
-// ProjectGroupsResult represents the result of listing project groups
-type ProjectGroupsResult struct {
-	ProjectGroups []ProjectGroup
-	TotalCount    int
-	HasNextPage   bool
-	EndCursor     string
+// ProductsResult represents the result of listing products
+type ProductsResult struct {
+	Products    []Product
+	TotalCount  int
+	HasNextPage bool
+	EndCursor   string
 }
 
-// ListProjectGroupsInput contains parameters for listing project groups
-type ListProjectGroupsInput struct {
+// ListProductsInput contains parameters for listing products
+type ListProductsInput struct {
 	First  int
 	After  string
 	Search string
 }
 
-// ListProjectGroups fetches project groups with pagination
-func (c *Client) ListProjectGroups(ctx context.Context, input ListProjectGroupsInput) (*ProjectGroupsResult, error) {
+// ListProducts fetches products with pagination
+func (c *Client) ListProducts(ctx context.Context, input ListProductsInput) (*ProductsResult, error) {
 	vars := make(map[string]interface{})
 	if input.First > 0 {
 		vars["first"] = input.First
@@ -100,29 +100,29 @@ func (c *Client) ListProjectGroups(ctx context.Context, input ListProjectGroupsI
 		return nil, err
 	}
 
-	groups := make([]ProjectGroup, len(result.Organization.ProjectGroups.Nodes))
+	products := make([]Product, len(result.Organization.ProjectGroups.Nodes))
 	for i, n := range result.Organization.ProjectGroups.Nodes {
-		groups[i] = ProjectGroup{
+		products[i] = Product{
 			ID:             n.ID,
 			Name:           n.Name,
 			Description:    n.Description,
 			Enabled:        n.Enabled,
 			OrganizationID: n.OrganizationID,
 			UpdatedAt:      n.UpdatedAt,
-			SbomsCount:     n.SbomsCount,
+			VersionsCount:  n.SbomsCount,
 		}
 	}
 
-	return &ProjectGroupsResult{
-		ProjectGroups: groups,
-		TotalCount:    result.Organization.ProjectGroups.TotalCount,
-		HasNextPage:   result.Organization.ProjectGroups.PageInfo.HasNextPage,
-		EndCursor:     result.Organization.ProjectGroups.PageInfo.EndCursor,
+	return &ProductsResult{
+		Products:    products,
+		TotalCount:  result.Organization.ProjectGroups.TotalCount,
+		HasNextPage: result.Organization.ProjectGroups.PageInfo.HasNextPage,
+		EndCursor:   result.Organization.ProjectGroups.PageInfo.EndCursor,
 	}, nil
 }
 
-// GetProjectGroup fetches a single project group by ID
-func (c *Client) GetProjectGroup(ctx context.Context, id string) (*ProjectGroup, error) {
+// GetProduct fetches a single product by ID
+func (c *Client) GetProduct(ctx context.Context, id string) (*Product, error) {
 	vars := map[string]interface{}{
 		"id": id,
 	}
@@ -151,33 +151,33 @@ func (c *Client) GetProjectGroup(ctx context.Context, id string) (*ProjectGroup,
 		return nil, err
 	}
 
-	projects := make([]Project, len(result.ProjectGroup.Projects))
+	environments := make([]Environment, len(result.ProjectGroup.Projects))
 	for i, p := range result.ProjectGroup.Projects {
-		projects[i] = Project{
-			ID:             p.ID,
-			Name:           p.Name,
-			Description:    p.Description,
-			Enabled:        p.Enabled,
-			UpdatedAt:      p.UpdatedAt,
-			SbomsCount:     p.SbomsCount,
-			ProjectGroupID: result.ProjectGroup.ID,
+		environments[i] = Environment{
+			ID:            p.ID,
+			Name:          p.Name,
+			Description:   p.Description,
+			Enabled:       p.Enabled,
+			UpdatedAt:     p.UpdatedAt,
+			VersionsCount: p.SbomsCount,
+			ProductID:     result.ProjectGroup.ID,
 		}
 	}
 
-	return &ProjectGroup{
+	return &Product{
 		ID:             result.ProjectGroup.ID,
 		Name:           result.ProjectGroup.Name,
 		Description:    result.ProjectGroup.Description,
 		Enabled:        result.ProjectGroup.Enabled,
 		OrganizationID: result.ProjectGroup.OrganizationID,
 		UpdatedAt:      result.ProjectGroup.UpdatedAt,
-		SbomsCount:     result.ProjectGroup.SbomsCount,
-		Projects:       projects,
+		VersionsCount:  result.ProjectGroup.SbomsCount,
+		Environments:   environments,
 	}, nil
 }
 
-// GetProject fetches a single project by ID
-func (c *Client) GetProject(ctx context.Context, id string) (*Project, error) {
+// GetEnvironment fetches a single environment by ID
+func (c *Client) GetEnvironment(ctx context.Context, id string) (*Environment, error) {
 	vars := map[string]interface{}{
 		"id": id,
 	}
@@ -202,22 +202,22 @@ func (c *Client) GetProject(ctx context.Context, id string) (*Project, error) {
 		return nil, err
 	}
 
-	var pg *ProjectGroup
+	var product *Product
 	if result.Project.ProjectGroup.ID != "" {
-		pg = &ProjectGroup{
+		product = &Product{
 			ID:   result.Project.ProjectGroup.ID,
 			Name: result.Project.ProjectGroup.Name,
 		}
 	}
 
-	return &Project{
-		ID:             result.Project.ID,
-		Name:           result.Project.Name,
-		Description:    result.Project.Description,
-		Enabled:        result.Project.Enabled,
-		ProjectGroupID: result.Project.ProjectGroupID,
-		UpdatedAt:      result.Project.UpdatedAt,
-		SbomsCount:     result.Project.SbomsCount,
-		ProjectGroup:   pg,
+	return &Environment{
+		ID:            result.Project.ID,
+		Name:          result.Project.Name,
+		Description:   result.Project.Description,
+		Enabled:       result.Project.Enabled,
+		ProductID:     result.Project.ProjectGroupID,
+		UpdatedAt:     result.Project.UpdatedAt,
+		VersionsCount: result.Project.SbomsCount,
+		Product:       product,
 	}, nil
 }

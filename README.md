@@ -1,13 +1,13 @@
 # lynk-mcp
 
-MCP (Model Context Protocol) server for Lynk SBOM management API. This server enables AI assistants like Claude to interact with your Lynk organization for SBOM management, vulnerability tracking, and compliance checking.
+MCP (Model Context Protocol) server for Lynk version management API. This server enables AI assistants like Claude to interact with your Lynk organization for version management, vulnerability tracking, and compliance checking.
 
 ## Features
 
 - **Organization Management**: View organization info and metrics
-- **Products & Projects**: List and explore project groups (products) and projects (streams)
-- **SBOM Operations**: List, view, and compare SBOMs with drift analysis
-- **Component Analysis**: Search and explore components across SBOMs
+- **Products & Environments**: List and explore products and environments
+- **Version Operations**: List, view, and compare versions with drift analysis
+- **Component Analysis**: Search and explore components across versions
 - **Vulnerability Management**: Query vulnerabilities with filtering by severity, KEV status, and VEX status
 - **Policy Compliance**: View policies and their evaluation results
 - **License Management**: Track and filter licenses across your organization
@@ -60,7 +60,9 @@ lynk-mcp verify
 
 This will display your organization information if the connection is successful.
 
-## Usage with Claude Desktop
+## Usage with AI Assistants
+
+### Claude Desktop
 
 Add the following to your Claude Desktop configuration file:
 
@@ -71,7 +73,7 @@ Add the following to your Claude Desktop configuration file:
 ```json
 {
   "mcpServers": {
-    "lynk-sbom": {
+    "lynk": {
       "command": "lynk-mcp",
       "args": ["serve"]
     }
@@ -81,33 +83,168 @@ Add the following to your Claude Desktop configuration file:
 
 Restart Claude Desktop after making this change.
 
+### Claude Code (CLI)
+
+Add the MCP server to Claude Code using the CLI:
+
+```bash
+claude mcp add lynk -- lynk-mcp serve
+```
+
+Or manually add to your Claude Code settings file:
+
+**macOS**: `~/.claude/settings.json`
+**Linux**: `~/.claude/settings.json`
+**Windows**: `%USERPROFILE%\.claude\settings.json`
+
+```json
+{
+  "mcpServers": {
+    "lynk": {
+      "command": "lynk-mcp",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+For project-specific configuration, create a `.mcp.json` file in your project root:
+
+```json
+{
+  "mcpServers": {
+    "lynk": {
+      "command": "lynk-mcp",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+### VS Code
+
+VS Code supports MCP servers through the built-in agent mode or extensions like Continue.
+
+#### Using VS Code Agent Mode (v1.99+)
+
+Add to your VS Code settings (`settings.json`):
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "lynk": {
+        "command": "lynk-mcp",
+        "args": ["serve"]
+      }
+    }
+  }
+}
+```
+
+Or create a `.vscode/mcp.json` file in your workspace:
+
+```json
+{
+  "servers": {
+    "lynk": {
+      "command": "lynk-mcp",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+#### Using Continue Extension
+
+If using the [Continue](https://continue.dev) extension, add to your `~/.continue/config.json`:
+
+```json
+{
+  "experimental": {
+    "modelContextProtocolServers": [
+      {
+        "transport": {
+          "type": "stdio",
+          "command": "lynk-mcp",
+          "args": ["serve"]
+        }
+      }
+    ]
+  }
+}
+```
+
+### Cursor
+
+Add the MCP server to your Cursor configuration:
+
+**macOS**: `~/.cursor/mcp.json`
+**Windows**: `%USERPROFILE%\.cursor\mcp.json`
+**Linux**: `~/.cursor/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "lynk": {
+      "command": "lynk-mcp",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+Alternatively, create a `.cursor/mcp.json` file in your project root for project-specific configuration.
+
+### Zed
+
+Add the MCP server to your Zed settings:
+
+**macOS**: `~/.config/zed/settings.json`
+**Linux**: `~/.config/zed/settings.json`
+
+```json
+{
+  "context_servers": {
+    "lynk": {
+      "command": {
+        "path": "lynk-mcp",
+        "args": ["serve"]
+      }
+    }
+  }
+}
+```
+
+Or for project-specific configuration, add to `.zed/settings.json` in your project root.
+
 ## Available Tools
 
-### Organization & Projects
+### Organization & Products
 
 | Tool | Description |
 |------|-------------|
 | `get_organization` | Get current organization info and metrics |
-| `list_project_groups` | List all products/project groups |
-| `get_project_group` | Get project group details with its projects |
-| `list_projects` | List projects within a project group |
-| `get_project` | Get project details |
+| `list_products` | List all products |
+| `get_product` | Get product details with its environments |
+| `list_environments` | List environments within a product |
+| `get_environment` | Get environment details |
 
-### SBOMs & Components
+### Versions & Components
 
 | Tool | Description |
 |------|-------------|
-| `list_sboms` | List SBOMs in a project |
-| `get_sbom` | Get SBOM details with statistics |
-| `list_components` | List components in an SBOM |
+| `list_versions` | List versions in an environment |
+| `get_version` | Get version details with statistics |
+| `list_components` | List components in a version |
 | `get_component` | Get component details |
-| `compare_sboms` | Compare two SBOMs for drift analysis |
+| `compare_versions` | Compare two versions for drift analysis |
 
 ### Vulnerabilities
 
 | Tool | Description |
 |------|-------------|
-| `list_vulnerabilities` | List vulnerabilities in an SBOM with filters |
+| `list_vulnerabilities` | List vulnerabilities in a version with filters |
 | `get_vulnerability` | Get vulnerability details by CVE or UUID |
 | `search_vulnerabilities` | Search vulnerabilities across all products |
 
@@ -124,23 +261,68 @@ Restart Claude Desktop after making this change.
 
 | Resource URI | Description |
 |--------------|-------------|
-| `sbom:///{sbom_id}` | Complete SBOM information |
-| `sbom:///{sbom_id}/components` | All components in an SBOM |
-| `sbom:///{sbom_id}/vulnerabilities` | All vulnerabilities in an SBOM |
-| `project:///{project_id}/latest-sbom` | Most recent SBOM for a project |
+| `version:///{version_id}` | Complete version information |
+| `version:///{version_id}/components` | All components in a version |
+| `version:///{version_id}/vulnerabilities` | All vulnerabilities in a version |
+| `environment:///{environment_id}/latest-version` | Most recent version for an environment |
 | `organization:///summary` | Organization overview |
 | `vulnerability:///{cve_id}` | Vulnerability details by CVE ID |
 
 ## Example Queries
 
-Once configured with Claude Desktop, you can ask questions like:
+Once configured, you can ask your AI assistant questions like these:
+
+### Getting Started
 
 - "List all my products"
-- "Show me the vulnerabilities in the latest SBOM for [project name]"
-- "What critical vulnerabilities are in my organization?"
-- "Compare the last two versions of [product name]"
-- "What policies are failing for [project name]?"
-- "Show me all components using Apache-2.0 license"
+- "Show me the environments in [product name]"
+- "What's the latest SBOM version for [environment name]?"
+
+### Vulnerability Analysis
+
+- "Show me all critical vulnerabilities in my organization"
+- "List vulnerabilities with KEV (Known Exploited Vulnerabilities) status"
+- "What vulnerabilities in [product name] have a fix available?"
+- "Show me all high and critical severity vulnerabilities across all products"
+- "Which components have the most vulnerabilities?"
+
+### Searching for Specific Attacks & CVEs
+
+- "Are any of my products affected by the Shai Hulud attack (CVE-2024-3094)?"
+- "Check if my organization is vulnerable to Log4Shell (CVE-2021-44228)"
+- "Search for any components affected by CVE-2023-44487 (HTTP/2 Rapid Reset)"
+- "Do I have any xz-utils components that might be affected by the backdoor?"
+- "Find all occurrences of OpenSSL vulnerabilities in my SBOMs"
+
+### Generating Cybersecurity Reports
+
+- "Generate a security summary report for [product name] including all critical vulnerabilities, their CVSS scores, and remediation status"
+- "Create an executive summary of our organization's vulnerability posture"
+- "List all components with known vulnerabilities grouped by severity for compliance reporting"
+- "Generate a report of all policy violations across my products"
+- "Summarize the vulnerability trends between the last two versions of [product name]"
+- "Create a license compliance report showing all copyleft licenses in use"
+
+### Drift Analysis & Comparisons
+
+- "Compare the last two versions of [product name] and highlight security changes"
+- "What new vulnerabilities were introduced in the latest version?"
+- "Show me components that were added or removed between versions"
+- "Has our security posture improved or degraded since the last release?"
+
+### Policy & Compliance
+
+- "What policies are currently failing for [environment name]?"
+- "Show me all SBOM versions that violate our security policies"
+- "List all components using GPL licenses"
+- "Which products have components with deprecated licenses?"
+
+### Component Analysis
+
+- "Find all instances of log4j across my organization"
+- "List all components from [vendor name]"
+- "Show me all direct dependencies vs transitive dependencies in [version]"
+- "Which components are missing PURL identifiers?"
 
 ## Configuration File
 
