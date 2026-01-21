@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(goreleaser check:*)",
-      "Bash(make build:*)"
+      "Bash(make build:*)",
+      "Bash(go build:*)"
     ]
   }
 }

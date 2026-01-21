@@ -29,8 +29,8 @@ import (
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "lynk-mcp",
-		Short: "MCP server for Lynk SBOM management API",
-		Long:  `lynk-mcp is an MCP (Model Context Protocol) server that bridges AI assistants with the Lynk API for SBOM management, vulnerability tracking, and compliance checking.`,
+		Short: "MCP server for Lynk version management API",
+		Long:  `lynk-mcp is an MCP (Model Context Protocol) server that bridges AI assistants with the Lynk API for version management, vulnerability tracking, and compliance checking.`,
 	}
 
 	// Configure command
@@ -145,8 +145,8 @@ func runVerify(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Organization: %s\n", org.Name)
 	fmt.Printf("ID: %s\n", org.ID)
 	if org.Metrics != nil {
-		fmt.Printf("Projects: %d\n", org.Metrics.ProjectCount)
-		fmt.Printf("SBOMs: %d\n", org.Metrics.VersionCount)
+		fmt.Printf("Environments: %d\n", org.Metrics.ProjectCount)
+		fmt.Printf("Versions: %d\n", org.Metrics.VersionCount)
 		fmt.Printf("Components: %d\n", org.Metrics.ComponentCount)
 	}
 

@@ -47,12 +47,12 @@ type PolicyRule struct {
 type PolicyResult struct {
 	ID         string
 	PolicyID   string
-	SbomID     string
+	VersionID  string
 	ResultType string
 	Result     string
 	CreatedAt  time.Time
 	Policy     *Policy
-	Sbom       *Sbom
+	Version    *Version
 }
 
 // PoliciesResult represents the result of listing policies
@@ -216,7 +216,7 @@ type ListPolicyResultsInput struct {
 	First      int
 	After      string
 	PolicyID   string
-	SbomID     string
+	VersionID  string
 	ResultType string
 }
 
@@ -234,8 +234,8 @@ func (c *Client) ListPolicyResults(ctx context.Context, input ListPolicyResultsI
 	if input.PolicyID != "" {
 		vars["policyId"] = []string{input.PolicyID}
 	}
-	if input.SbomID != "" {
-		vars["sbomId"] = []string{input.SbomID}
+	if input.VersionID != "" {
+		vars["sbomId"] = []string{input.VersionID}
 	}
 	if input.ResultType != "" {
 		vars["resultType"] = []string{input.ResultType}
@@ -280,7 +280,7 @@ func (c *Client) ListPolicyResults(ctx context.Context, input ListPolicyResultsI
 		pr := PolicyResult{
 			ID:         n.ID,
 			PolicyID:   n.PolicyID,
-			SbomID:     n.SbomID,
+			VersionID:  n.SbomID,
 			ResultType: n.ResultType,
 			Result:     n.Result,
 			CreatedAt:  n.CreatedAt,
@@ -292,10 +292,10 @@ func (c *Client) ListPolicyResults(ctx context.Context, input ListPolicyResultsI
 			}
 		}
 		if n.Sbom != nil {
-			pr.Sbom = &Sbom{
-				ID:             n.Sbom.ID,
-				ProjectVersion: n.Sbom.ProjectVersion,
-				Project: &Project{
+			pr.Version = &Version{
+				ID:      n.Sbom.ID,
+				Version: n.Sbom.ProjectVersion,
+				Environment: &Environment{
 					ID:   n.Sbom.Project.ID,
 					Name: n.Sbom.Project.Name,
 				},

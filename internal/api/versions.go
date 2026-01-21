@@ -21,23 +21,23 @@ import (
 	"github.com/interlynk-io/lynk-mcp/internal/graphql"
 )
 
-// Sbom represents an SBOM document
-type Sbom struct {
-	ID             string
-	ProjectVersion string
-	Spec           string
-	SpecVersion    string
-	Format         string
-	Lifecycle      string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	ProjectID      string
-	Stats          *SbomStats
-	Project        *Project
+// Version represents a version (formerly SBOM)
+type Version struct {
+	ID            string
+	Version       string
+	Spec          string
+	SpecVersion   string
+	Format        string
+	Lifecycle     string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	EnvironmentID string
+	Stats         *VersionStats
+	Environment   *Environment
 }
 
-// SbomStats contains statistics for an SBOM
-type SbomStats struct {
+// VersionStats contains statistics for a version
+type VersionStats struct {
 	CompCount         int
 	CompPurlCount     int
 	CompCpeCount      int
@@ -46,27 +46,27 @@ type SbomStats struct {
 	VulnStats         map[string]interface{}
 }
 
-// SbomComponent represents a component in an SBOM
-type SbomComponent struct {
-	ID          string
-	Name        string
-	Version     string
-	Kind        string
-	Purl        string
-	Cpes        []string
-	LicensesExp string
-	Group       string
-	Description string
-	Primary     bool
-	Internal    bool
-	SbomID      string
-	UpdatedAt   time.Time
-	Sbom        *Sbom
+// VersionComponent represents a component in a version
+type VersionComponent struct {
+	ID           string
+	Name         string
+	Version      string
+	Kind         string
+	Purl         string
+	Cpes         []string
+	LicensesExp  string
+	Group        string
+	Description  string
+	Primary      bool
+	Internal     bool
+	VersionID    string
+	UpdatedAt    time.Time
+	VersionInfo  *Version
 }
 
-// SbomsResult represents the result of listing SBOMs
-type SbomsResult struct {
-	Sboms       []Sbom
+// VersionsResult represents the result of listing versions
+type VersionsResult struct {
+	Versions    []Version
 	TotalCount  int
 	HasNextPage bool
 	EndCursor   string
@@ -74,34 +74,34 @@ type SbomsResult struct {
 
 // ComponentsResult represents the result of listing components
 type ComponentsResult struct {
-	Components  []SbomComponent
+	Components  []VersionComponent
 	TotalCount  int
 	HasNextPage bool
 	EndCursor   string
 }
 
-// SbomDiff represents a diff entry between two SBOMs
-type SbomDiff struct {
+// VersionDiff represents a diff entry between two versions
+type VersionDiff struct {
 	DiffType           string
 	DiffTags           []string
-	SubjectComponent   *SbomComponent
+	SubjectComponent   *VersionComponent
 	SubjectComponentID string
-	TargetComponent    *SbomComponent
+	TargetComponent    *VersionComponent
 	TargetComponentID  string
 }
 
-// ListSbomsInput contains parameters for listing SBOMs
-type ListSbomsInput struct {
-	ProjectID string
-	First     int
-	After     string
-	Lifecycle []string
+// ListVersionsInput contains parameters for listing versions
+type ListVersionsInput struct {
+	EnvironmentID string
+	First         int
+	After         string
+	Lifecycle     []string
 }
 
-// ListSboms fetches SBOMs for a project
-func (c *Client) ListSboms(ctx context.Context, input ListSbomsInput) (*SbomsResult, error) {
+// ListVersions fetches versions for an environment
+func (c *Client) ListVersions(ctx context.Context, input ListVersionsInput) (*VersionsResult, error) {
 	vars := map[string]interface{}{
-		"projectId": input.ProjectID,
+		"projectId": input.EnvironmentID,
 	}
 	if input.First > 0 {
 		vars["first"] = input.First
@@ -150,11 +150,11 @@ func (c *Client) ListSboms(ctx context.Context, input ListSbomsInput) (*SbomsRes
 		return nil, err
 	}
 
-	sboms := make([]Sbom, len(result.Project.SbomVersions.Nodes))
+	versions := make([]Version, len(result.Project.SbomVersions.Nodes))
 	for i, n := range result.Project.SbomVersions.Nodes {
-		var stats *SbomStats
+		var stats *VersionStats
 		if n.Stats != nil {
-			stats = &SbomStats{
+			stats = &VersionStats{
 				CompCount:         n.Stats.CompCount,
 				CompPurlCount:     n.Stats.CompPurlCount,
 				CompCpeCount:      n.Stats.CompCpeCount,
@@ -163,30 +163,30 @@ func (c *Client) ListSboms(ctx context.Context, input ListSbomsInput) (*SbomsRes
 				VulnStats:         n.Stats.VulnStats,
 			}
 		}
-		sboms[i] = Sbom{
-			ID:             n.ID,
-			ProjectVersion: n.ProjectVersion,
-			Spec:           n.Spec,
-			SpecVersion:    n.SpecVersion,
-			Format:         n.Format,
-			Lifecycle:      n.Lifecycle,
-			CreatedAt:      n.CreatedAt,
-			UpdatedAt:      n.UpdatedAt,
-			ProjectID:      n.ProjectID,
-			Stats:          stats,
+		versions[i] = Version{
+			ID:            n.ID,
+			Version:       n.ProjectVersion,
+			Spec:          n.Spec,
+			SpecVersion:   n.SpecVersion,
+			Format:        n.Format,
+			Lifecycle:     n.Lifecycle,
+			CreatedAt:     n.CreatedAt,
+			UpdatedAt:     n.UpdatedAt,
+			EnvironmentID: n.ProjectID,
+			Stats:         stats,
 		}
 	}
 
-	return &SbomsResult{
-		Sboms:       sboms,
+	return &VersionsResult{
+		Versions:    versions,
 		TotalCount:  result.Project.SbomVersions.TotalCount,
 		HasNextPage: result.Project.SbomVersions.PageInfo.HasNextPage,
 		EndCursor:   result.Project.SbomVersions.PageInfo.EndCursor,
 	}, nil
 }
 
-// GetSbom fetches a single SBOM by ID
-func (c *Client) GetSbom(ctx context.Context, id string) (*Sbom, error) {
+// GetVersion fetches a single version by ID
+func (c *Client) GetVersion(ctx context.Context, id string) (*Version, error) {
 	vars := map[string]interface{}{
 		"sbomId": id,
 	}
@@ -222,9 +222,9 @@ func (c *Client) GetSbom(ctx context.Context, id string) (*Sbom, error) {
 		return nil, err
 	}
 
-	var stats *SbomStats
+	var stats *VersionStats
 	if result.Sbom.Stats != nil {
-		stats = &SbomStats{
+		stats = &VersionStats{
 			CompCount:         result.Sbom.Stats.CompCount,
 			CompPurlCount:     result.Sbom.Stats.CompPurlCount,
 			CompCpeCount:      result.Sbom.Stats.CompCpeCount,
@@ -234,39 +234,39 @@ func (c *Client) GetSbom(ctx context.Context, id string) (*Sbom, error) {
 		}
 	}
 
-	return &Sbom{
-		ID:             result.Sbom.ID,
-		ProjectVersion: result.Sbom.ProjectVersion,
-		Spec:           result.Sbom.Spec,
-		SpecVersion:    result.Sbom.SpecVersion,
-		Format:         result.Sbom.Format,
-		Lifecycle:      result.Sbom.Lifecycle,
-		CreatedAt:      result.Sbom.CreatedAt,
-		UpdatedAt:      result.Sbom.UpdatedAt,
-		ProjectID:      result.Sbom.ProjectID,
-		Stats:          stats,
-		Project: &Project{
-			ID:             result.Sbom.Project.ID,
-			Name:           result.Sbom.Project.Name,
-			ProjectGroupID: result.Sbom.Project.ProjectGroupID,
+	return &Version{
+		ID:            result.Sbom.ID,
+		Version:       result.Sbom.ProjectVersion,
+		Spec:          result.Sbom.Spec,
+		SpecVersion:   result.Sbom.SpecVersion,
+		Format:        result.Sbom.Format,
+		Lifecycle:     result.Sbom.Lifecycle,
+		CreatedAt:     result.Sbom.CreatedAt,
+		UpdatedAt:     result.Sbom.UpdatedAt,
+		EnvironmentID: result.Sbom.ProjectID,
+		Stats:         stats,
+		Environment: &Environment{
+			ID:        result.Sbom.Project.ID,
+			Name:      result.Sbom.Project.Name,
+			ProductID: result.Sbom.Project.ProjectGroupID,
 		},
 	}, nil
 }
 
 // ListComponentsInput contains parameters for listing components
 type ListComponentsInput struct {
-	SbomID string
-	First  int
-	After  string
-	Search string
-	Kind   []string
-	Direct *bool
+	VersionID string
+	First     int
+	After     string
+	Search    string
+	Kind      []string
+	Direct    *bool
 }
 
-// ListComponents fetches components for an SBOM
+// ListComponents fetches components for a version
 func (c *Client) ListComponents(ctx context.Context, input ListComponentsInput) (*ComponentsResult, error) {
 	vars := map[string]interface{}{
-		"sbomId": input.SbomID,
+		"sbomId": input.VersionID,
 	}
 	if input.First > 0 {
 		vars["first"] = input.First
@@ -317,9 +317,9 @@ func (c *Client) ListComponents(ctx context.Context, input ListComponentsInput) 
 		return nil, err
 	}
 
-	components := make([]SbomComponent, len(result.Sbom.Components.Nodes))
+	components := make([]VersionComponent, len(result.Sbom.Components.Nodes))
 	for i, n := range result.Sbom.Components.Nodes {
-		components[i] = SbomComponent{
+		components[i] = VersionComponent{
 			ID:          n.ID,
 			Name:        n.Name,
 			Version:     n.Version,
@@ -331,7 +331,7 @@ func (c *Client) ListComponents(ctx context.Context, input ListComponentsInput) 
 			Description: n.Description,
 			Primary:     n.Primary,
 			Internal:    n.Internal,
-			SbomID:      n.SbomID,
+			VersionID:   n.SbomID,
 			UpdatedAt:   n.UpdatedAt,
 		}
 	}
@@ -345,10 +345,10 @@ func (c *Client) ListComponents(ctx context.Context, input ListComponentsInput) 
 }
 
 // GetComponent fetches a single component by ID
-func (c *Client) GetComponent(ctx context.Context, id, sbomID string) (*SbomComponent, error) {
+func (c *Client) GetComponent(ctx context.Context, id, versionID string) (*VersionComponent, error) {
 	vars := map[string]interface{}{
 		"id":     id,
-		"sbomId": sbomID,
+		"sbomId": versionID,
 	}
 
 	var result struct {
@@ -381,7 +381,7 @@ func (c *Client) GetComponent(ctx context.Context, id, sbomID string) (*SbomComp
 		return nil, err
 	}
 
-	return &SbomComponent{
+	return &VersionComponent{
 		ID:          result.Component.ID,
 		Name:        result.Component.Name,
 		Version:     result.Component.Version,
@@ -393,12 +393,12 @@ func (c *Client) GetComponent(ctx context.Context, id, sbomID string) (*SbomComp
 		Description: result.Component.Description,
 		Primary:     result.Component.Primary,
 		Internal:    result.Component.Internal,
-		SbomID:      result.Component.SbomID,
+		VersionID:   result.Component.SbomID,
 		UpdatedAt:   result.Component.UpdatedAt,
-		Sbom: &Sbom{
-			ID:             result.Component.Sbom.ID,
-			ProjectVersion: result.Component.Sbom.ProjectVersion,
-			Project: &Project{
+		VersionInfo: &Version{
+			ID:      result.Component.Sbom.ID,
+			Version: result.Component.Sbom.ProjectVersion,
+			Environment: &Environment{
 				ID:   result.Component.Sbom.Project.ID,
 				Name: result.Component.Sbom.Project.Name,
 			},
@@ -406,13 +406,12 @@ func (c *Client) GetComponent(ctx context.Context, id, sbomID string) (*SbomComp
 	}, nil
 }
 
-// CompareSboms compares two SBOMs and returns the differences
-func (c *Client) CompareSboms(ctx context.Context, sourceSbomID, targetSbomID string) ([]SbomDiff, error) {
+// CompareVersions compares two versions and returns the differences
+func (c *Client) CompareVersions(ctx context.Context, sourceVersionID, targetVersionID string) ([]VersionDiff, error) {
 	vars := map[string]interface{}{
-		"sourceSbomId": sourceSbomID,
-		"targetSbomId": targetSbomID,
+		"sourceSbomId": sourceVersionID,
+		"targetSbomId": targetVersionID,
 	}
-	// Note: sourceSbomId is used for the sbom(sbomId:) query parameter
 
 	var result struct {
 		Sbom struct {
@@ -441,16 +440,16 @@ func (c *Client) CompareSboms(ctx context.Context, sourceSbomID, targetSbomID st
 		return nil, err
 	}
 
-	diffs := make([]SbomDiff, len(result.Sbom.SbomDrift))
+	diffs := make([]VersionDiff, len(result.Sbom.SbomDrift))
 	for i, d := range result.Sbom.SbomDrift {
-		diff := SbomDiff{
+		diff := VersionDiff{
 			DiffType:           d.DiffType,
 			DiffTags:           d.DiffTags,
 			SubjectComponentID: d.SubjectComponentID,
 			TargetComponentID:  d.TargetComponentID,
 		}
 		if d.SubjectComponent != nil {
-			diff.SubjectComponent = &SbomComponent{
+			diff.SubjectComponent = &VersionComponent{
 				ID:      d.SubjectComponent.ID,
 				Name:    d.SubjectComponent.Name,
 				Version: d.SubjectComponent.Version,
@@ -458,7 +457,7 @@ func (c *Client) CompareSboms(ctx context.Context, sourceSbomID, targetSbomID st
 			}
 		}
 		if d.TargetComponent != nil {
-			diff.TargetComponent = &SbomComponent{
+			diff.TargetComponent = &VersionComponent{
 				ID:      d.TargetComponent.ID,
 				Name:    d.TargetComponent.Name,
 				Version: d.TargetComponent.Version,

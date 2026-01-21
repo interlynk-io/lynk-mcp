@@ -54,242 +54,242 @@ func (s *Server) handleGetOrganization(ctx context.Context, request mcp.CallTool
 	return formatResult(result)
 }
 
-func (s *Server) handleListProjectGroups(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	input := api.ListProjectGroupsInput{
+func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	input := api.ListProductsInput{
 		First: getIntParam(request.Params.Arguments, "limit", 20),
 	}
 	if search, ok := request.Params.Arguments["search"].(string); ok {
 		input.Search = search
 	}
 
-	result, err := s.client.ListProjectGroups(ctx, input)
+	result, err := s.client.ListProducts(ctx, input)
 	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to list project groups: %v", err)), nil
+		return newToolResultError(fmt.Sprintf("Failed to list products: %v", err)), nil
 	}
 
-	groups := make([]map[string]interface{}, len(result.ProjectGroups))
-	for i, g := range result.ProjectGroups {
-		groups[i] = map[string]interface{}{
-			"id":          g.ID,
-			"name":        g.Name,
-			"description": g.Description,
-			"enabled":     g.Enabled,
-			"sbomsCount":  g.SbomsCount,
-			"updatedAt":   g.UpdatedAt,
+	products := make([]map[string]interface{}, len(result.Products))
+	for i, p := range result.Products {
+		products[i] = map[string]interface{}{
+			"id":            p.ID,
+			"name":          p.Name,
+			"description":   p.Description,
+			"enabled":       p.Enabled,
+			"versionsCount": p.VersionsCount,
+			"updatedAt":     p.UpdatedAt,
 		}
 	}
 
 	return formatResult(map[string]interface{}{
-		"projectGroups": groups,
-		"totalCount":    result.TotalCount,
-		"hasMore":       result.HasNextPage,
-	})
-}
-
-func (s *Server) handleGetProjectGroup(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	id, ok := request.Params.Arguments["id"].(string)
-	if !ok || id == "" {
-		return newToolResultError("Missing required parameter: id"), nil
-	}
-
-	group, err := s.client.GetProjectGroup(ctx, id)
-	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to get project group: %v", err)), nil
-	}
-
-	projects := make([]map[string]interface{}, len(group.Projects))
-	for i, p := range group.Projects {
-		projects[i] = map[string]interface{}{
-			"id":          p.ID,
-			"name":        p.Name,
-			"description": p.Description,
-			"enabled":     p.Enabled,
-			"sbomsCount":  p.SbomsCount,
-			"updatedAt":   p.UpdatedAt,
-		}
-	}
-
-	return formatResult(map[string]interface{}{
-		"id":          group.ID,
-		"name":        group.Name,
-		"description": group.Description,
-		"enabled":     group.Enabled,
-		"sbomsCount":  group.SbomsCount,
-		"updatedAt":   group.UpdatedAt,
-		"projects":    projects,
-	})
-}
-
-func (s *Server) handleListProjects(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	projectGroupID, ok := request.Params.Arguments["project_group_id"].(string)
-	if !ok || projectGroupID == "" {
-		return newToolResultError("Missing required parameter: project_group_id"), nil
-	}
-
-	group, err := s.client.GetProjectGroup(ctx, projectGroupID)
-	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to list projects: %v", err)), nil
-	}
-
-	search, _ := request.Params.Arguments["search"].(string)
-
-	projects := make([]map[string]interface{}, 0)
-	for _, p := range group.Projects {
-		if search != "" && !strings.Contains(strings.ToLower(p.Name), strings.ToLower(search)) {
-			continue
-		}
-		projects = append(projects, map[string]interface{}{
-			"id":          p.ID,
-			"name":        p.Name,
-			"description": p.Description,
-			"enabled":     p.Enabled,
-			"sbomsCount":  p.SbomsCount,
-			"updatedAt":   p.UpdatedAt,
-		})
-	}
-
-	return formatResult(map[string]interface{}{
-		"projects":   projects,
-		"totalCount": len(projects),
-	})
-}
-
-func (s *Server) handleGetProject(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	id, ok := request.Params.Arguments["id"].(string)
-	if !ok || id == "" {
-		return newToolResultError("Missing required parameter: id"), nil
-	}
-
-	project, err := s.client.GetProject(ctx, id)
-	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to get project: %v", err)), nil
-	}
-
-	result := map[string]interface{}{
-		"id":             project.ID,
-		"name":           project.Name,
-		"description":    project.Description,
-		"enabled":        project.Enabled,
-		"projectGroupId": project.ProjectGroupID,
-		"sbomsCount":     project.SbomsCount,
-		"updatedAt":      project.UpdatedAt,
-	}
-
-	if project.ProjectGroup != nil {
-		result["projectGroup"] = map[string]interface{}{
-			"id":   project.ProjectGroup.ID,
-			"name": project.ProjectGroup.Name,
-		}
-	}
-
-	return formatResult(result)
-}
-
-func (s *Server) handleListSboms(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	projectID, ok := request.Params.Arguments["project_id"].(string)
-	if !ok || projectID == "" {
-		return newToolResultError("Missing required parameter: project_id"), nil
-	}
-
-	input := api.ListSbomsInput{
-		ProjectID: projectID,
-		First:     getIntParam(request.Params.Arguments, "limit", 20),
-	}
-	if lifecycle, ok := request.Params.Arguments["lifecycle"].(string); ok && lifecycle != "" {
-		input.Lifecycle = []string{lifecycle}
-	}
-
-	result, err := s.client.ListSboms(ctx, input)
-	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to list SBOMs: %v", err)), nil
-	}
-
-	sboms := make([]map[string]interface{}, len(result.Sboms))
-	for i, sb := range result.Sboms {
-		sbomData := map[string]interface{}{
-			"id":             sb.ID,
-			"projectVersion": sb.ProjectVersion,
-			"spec":           sb.Spec,
-			"specVersion":    sb.SpecVersion,
-			"format":         sb.Format,
-			"lifecycle":      sb.Lifecycle,
-			"createdAt":      sb.CreatedAt,
-			"updatedAt":      sb.UpdatedAt,
-		}
-		if sb.Stats != nil {
-			sbomData["stats"] = map[string]interface{}{
-				"componentCount":  sb.Stats.CompCount,
-				"vulnStats":       sb.Stats.VulnStats,
-			}
-		}
-		sboms[i] = sbomData
-	}
-
-	return formatResult(map[string]interface{}{
-		"sboms":      sboms,
+		"products":   products,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
 	})
 }
 
-func (s *Server) handleGetSbom(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Server) handleGetProduct(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	id, ok := request.Params.Arguments["id"].(string)
 	if !ok || id == "" {
 		return newToolResultError("Missing required parameter: id"), nil
 	}
 
-	sbom, err := s.client.GetSbom(ctx, id)
+	product, err := s.client.GetProduct(ctx, id)
 	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to get SBOM: %v", err)), nil
+		return newToolResultError(fmt.Sprintf("Failed to get product: %v", err)), nil
 	}
 
-	result := map[string]interface{}{
-		"id":             sbom.ID,
-		"projectVersion": sbom.ProjectVersion,
-		"spec":           sbom.Spec,
-		"specVersion":    sbom.SpecVersion,
-		"format":         sbom.Format,
-		"lifecycle":      sbom.Lifecycle,
-		"projectId":      sbom.ProjectID,
-		"createdAt":      sbom.CreatedAt,
-		"updatedAt":      sbom.UpdatedAt,
-	}
-
-	if sbom.Stats != nil {
-		result["stats"] = map[string]interface{}{
-			"componentCount":         sbom.Stats.CompCount,
-			"componentWithPurl":      sbom.Stats.CompPurlCount,
-			"componentWithCpe":       sbom.Stats.CompCpeCount,
-			"componentWithLicense":   sbom.Stats.CompLicenseCount,
-			"componentWithSupplier":  sbom.Stats.CompSupplierCount,
-			"vulnerabilities":        sbom.Stats.VulnStats,
+	environments := make([]map[string]interface{}, len(product.Environments))
+	for i, e := range product.Environments {
+		environments[i] = map[string]interface{}{
+			"id":            e.ID,
+			"name":          e.Name,
+			"description":   e.Description,
+			"enabled":       e.Enabled,
+			"versionsCount": e.VersionsCount,
+			"updatedAt":     e.UpdatedAt,
 		}
 	}
 
-	if sbom.Project != nil {
-		result["project"] = map[string]interface{}{
-			"id":             sbom.Project.ID,
-			"name":           sbom.Project.Name,
-			"projectGroupId": sbom.Project.ProjectGroupID,
+	return formatResult(map[string]interface{}{
+		"id":            product.ID,
+		"name":          product.Name,
+		"description":   product.Description,
+		"enabled":       product.Enabled,
+		"versionsCount": product.VersionsCount,
+		"updatedAt":     product.UpdatedAt,
+		"environments":  environments,
+	})
+}
+
+func (s *Server) handleListEnvironments(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	productID, ok := request.Params.Arguments["product_id"].(string)
+	if !ok || productID == "" {
+		return newToolResultError("Missing required parameter: product_id"), nil
+	}
+
+	product, err := s.client.GetProduct(ctx, productID)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to list environments: %v", err)), nil
+	}
+
+	search, _ := request.Params.Arguments["search"].(string)
+
+	environments := make([]map[string]interface{}, 0)
+	for _, e := range product.Environments {
+		if search != "" && !strings.Contains(strings.ToLower(e.Name), strings.ToLower(search)) {
+			continue
+		}
+		environments = append(environments, map[string]interface{}{
+			"id":            e.ID,
+			"name":          e.Name,
+			"description":   e.Description,
+			"enabled":       e.Enabled,
+			"versionsCount": e.VersionsCount,
+			"updatedAt":     e.UpdatedAt,
+		})
+	}
+
+	return formatResult(map[string]interface{}{
+		"environments": environments,
+		"totalCount":   len(environments),
+	})
+}
+
+func (s *Server) handleGetEnvironment(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, ok := request.Params.Arguments["id"].(string)
+	if !ok || id == "" {
+		return newToolResultError("Missing required parameter: id"), nil
+	}
+
+	environment, err := s.client.GetEnvironment(ctx, id)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to get environment: %v", err)), nil
+	}
+
+	result := map[string]interface{}{
+		"id":            environment.ID,
+		"name":          environment.Name,
+		"description":   environment.Description,
+		"enabled":       environment.Enabled,
+		"productId":     environment.ProductID,
+		"versionsCount": environment.VersionsCount,
+		"updatedAt":     environment.UpdatedAt,
+	}
+
+	if environment.Product != nil {
+		result["product"] = map[string]interface{}{
+			"id":   environment.Product.ID,
+			"name": environment.Product.Name,
 		}
 	}
 
 	return formatResult(result)
 }
 
-func (s *Server) handleCompareSboms(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	sourceSbomID, ok := request.Params.Arguments["source_sbom_id"].(string)
-	if !ok || sourceSbomID == "" {
-		return newToolResultError("Missing required parameter: source_sbom_id"), nil
-	}
-	targetSbomID, ok := request.Params.Arguments["target_sbom_id"].(string)
-	if !ok || targetSbomID == "" {
-		return newToolResultError("Missing required parameter: target_sbom_id"), nil
+func (s *Server) handleListVersions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	environmentID, ok := request.Params.Arguments["environment_id"].(string)
+	if !ok || environmentID == "" {
+		return newToolResultError("Missing required parameter: environment_id"), nil
 	}
 
-	diffs, err := s.client.CompareSboms(ctx, sourceSbomID, targetSbomID)
+	input := api.ListVersionsInput{
+		EnvironmentID: environmentID,
+		First:         getIntParam(request.Params.Arguments, "limit", 20),
+	}
+	if lifecycle, ok := request.Params.Arguments["lifecycle"].(string); ok && lifecycle != "" {
+		input.Lifecycle = []string{lifecycle}
+	}
+
+	result, err := s.client.ListVersions(ctx, input)
 	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to compare SBOMs: %v", err)), nil
+		return newToolResultError(fmt.Sprintf("Failed to list versions: %v", err)), nil
+	}
+
+	versions := make([]map[string]interface{}, len(result.Versions))
+	for i, v := range result.Versions {
+		versionData := map[string]interface{}{
+			"id":        v.ID,
+			"version":   v.Version,
+			"spec":      v.Spec,
+			"specVersion": v.SpecVersion,
+			"format":    v.Format,
+			"lifecycle": v.Lifecycle,
+			"createdAt": v.CreatedAt,
+			"updatedAt": v.UpdatedAt,
+		}
+		if v.Stats != nil {
+			versionData["stats"] = map[string]interface{}{
+				"componentCount": v.Stats.CompCount,
+				"vulnStats":      v.Stats.VulnStats,
+			}
+		}
+		versions[i] = versionData
+	}
+
+	return formatResult(map[string]interface{}{
+		"versions":   versions,
+		"totalCount": result.TotalCount,
+		"hasMore":    result.HasNextPage,
+	})
+}
+
+func (s *Server) handleGetVersion(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, ok := request.Params.Arguments["id"].(string)
+	if !ok || id == "" {
+		return newToolResultError("Missing required parameter: id"), nil
+	}
+
+	version, err := s.client.GetVersion(ctx, id)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to get version: %v", err)), nil
+	}
+
+	result := map[string]interface{}{
+		"id":            version.ID,
+		"version":       version.Version,
+		"spec":          version.Spec,
+		"specVersion":   version.SpecVersion,
+		"format":        version.Format,
+		"lifecycle":     version.Lifecycle,
+		"environmentId": version.EnvironmentID,
+		"createdAt":     version.CreatedAt,
+		"updatedAt":     version.UpdatedAt,
+	}
+
+	if version.Stats != nil {
+		result["stats"] = map[string]interface{}{
+			"componentCount":        version.Stats.CompCount,
+			"componentWithPurl":     version.Stats.CompPurlCount,
+			"componentWithCpe":      version.Stats.CompCpeCount,
+			"componentWithLicense":  version.Stats.CompLicenseCount,
+			"componentWithSupplier": version.Stats.CompSupplierCount,
+			"vulnerabilities":       version.Stats.VulnStats,
+		}
+	}
+
+	if version.Environment != nil {
+		result["environment"] = map[string]interface{}{
+			"id":        version.Environment.ID,
+			"name":      version.Environment.Name,
+			"productId": version.Environment.ProductID,
+		}
+	}
+
+	return formatResult(result)
+}
+
+func (s *Server) handleCompareVersions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	sourceVersionID, ok := request.Params.Arguments["source_version_id"].(string)
+	if !ok || sourceVersionID == "" {
+		return newToolResultError("Missing required parameter: source_version_id"), nil
+	}
+	targetVersionID, ok := request.Params.Arguments["target_version_id"].(string)
+	if !ok || targetVersionID == "" {
+		return newToolResultError("Missing required parameter: target_version_id"), nil
+	}
+
+	diffs, err := s.client.CompareVersions(ctx, sourceVersionID, targetVersionID)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to compare versions: %v", err)), nil
 	}
 
 	result := make([]map[string]interface{}, len(diffs))
@@ -318,22 +318,22 @@ func (s *Server) handleCompareSboms(ctx context.Context, request mcp.CallToolReq
 	}
 
 	return formatResult(map[string]interface{}{
-		"sourceSbomId": sourceSbomID,
-		"targetSbomId": targetSbomID,
-		"diffs":        result,
-		"totalChanges": len(result),
+		"sourceVersionId": sourceVersionID,
+		"targetVersionId": targetVersionID,
+		"diffs":           result,
+		"totalChanges":    len(result),
 	})
 }
 
 func (s *Server) handleListComponents(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	sbomID, ok := request.Params.Arguments["sbom_id"].(string)
-	if !ok || sbomID == "" {
-		return newToolResultError("Missing required parameter: sbom_id"), nil
+	versionID, ok := request.Params.Arguments["version_id"].(string)
+	if !ok || versionID == "" {
+		return newToolResultError("Missing required parameter: version_id"), nil
 	}
 
 	input := api.ListComponentsInput{
-		SbomID: sbomID,
-		First:  getIntParam(request.Params.Arguments, "limit", 50),
+		VersionID: versionID,
+		First:     getIntParam(request.Params.Arguments, "limit", 50),
 	}
 	if search, ok := request.Params.Arguments["search"].(string); ok {
 		input.Search = search
@@ -377,12 +377,12 @@ func (s *Server) handleGetComponent(ctx context.Context, request mcp.CallToolReq
 		return newToolResultError("Missing required parameter: id"), nil
 	}
 
-	sbomID, ok := request.Params.Arguments["sbom_id"].(string)
-	if !ok || sbomID == "" {
-		return newToolResultError("Missing required parameter: sbom_id"), nil
+	versionID, ok := request.Params.Arguments["version_id"].(string)
+	if !ok || versionID == "" {
+		return newToolResultError("Missing required parameter: version_id"), nil
 	}
 
-	component, err := s.client.GetComponent(ctx, id, sbomID)
+	component, err := s.client.GetComponent(ctx, id, versionID)
 	if err != nil {
 		return newToolResultError(fmt.Sprintf("Failed to get component: %v", err)), nil
 	}
@@ -399,19 +399,19 @@ func (s *Server) handleGetComponent(ctx context.Context, request mcp.CallToolReq
 		"description": component.Description,
 		"primary":     component.Primary,
 		"internal":    component.Internal,
-		"sbomId":      component.SbomID,
+		"versionId":   component.VersionID,
 		"updatedAt":   component.UpdatedAt,
 	}
 
-	if component.Sbom != nil {
-		result["sbom"] = map[string]interface{}{
-			"id":             component.Sbom.ID,
-			"projectVersion": component.Sbom.ProjectVersion,
+	if component.VersionInfo != nil {
+		result["versionInfo"] = map[string]interface{}{
+			"id":      component.VersionInfo.ID,
+			"version": component.VersionInfo.Version,
 		}
-		if component.Sbom.Project != nil {
-			result["project"] = map[string]interface{}{
-				"id":   component.Sbom.Project.ID,
-				"name": component.Sbom.Project.Name,
+		if component.VersionInfo.Environment != nil {
+			result["environment"] = map[string]interface{}{
+				"id":   component.VersionInfo.Environment.ID,
+				"name": component.VersionInfo.Environment.Name,
 			}
 		}
 	}
@@ -420,14 +420,14 @@ func (s *Server) handleGetComponent(ctx context.Context, request mcp.CallToolReq
 }
 
 func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	sbomID, ok := request.Params.Arguments["sbom_id"].(string)
-	if !ok || sbomID == "" {
-		return newToolResultError("Missing required parameter: sbom_id"), nil
+	versionID, ok := request.Params.Arguments["version_id"].(string)
+	if !ok || versionID == "" {
+		return newToolResultError("Missing required parameter: version_id"), nil
 	}
 
-	input := api.ListSbomVulnsInput{
-		SbomID: sbomID,
-		First:  getIntParam(request.Params.Arguments, "limit", 50),
+	input := api.ListVersionVulnsInput{
+		VersionID: versionID,
+		First:     getIntParam(request.Params.Arguments, "limit", 50),
 	}
 	if severity, ok := request.Params.Arguments["severity"].(string); ok && severity != "" {
 		input.Severity = []string{severity}
@@ -442,7 +442,7 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 		input.Search = search
 	}
 
-	result, err := s.client.ListSbomVulns(ctx, input)
+	result, err := s.client.ListVersionVulns(ctx, input)
 	if err != nil {
 		return newToolResultError(fmt.Sprintf("Failed to list vulnerabilities: %v", err)), nil
 	}
@@ -562,7 +562,7 @@ func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.Ca
 	for i, cv := range result.ComponentVulns {
 		vuln := map[string]interface{}{
 			"id":        cv.ID,
-			"sbomId":    cv.SbomID,
+			"versionId": cv.VersionID,
 			"fixedIn":   cv.FixedIn,
 			"updatedAt": cv.UpdatedAt,
 		}
@@ -673,8 +673,8 @@ func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.Cal
 	if policyID, ok := request.Params.Arguments["policy_id"].(string); ok {
 		input.PolicyID = policyID
 	}
-	if sbomID, ok := request.Params.Arguments["sbom_id"].(string); ok {
-		input.SbomID = sbomID
+	if versionID, ok := request.Params.Arguments["version_id"].(string); ok {
+		input.VersionID = versionID
 	}
 	if resultType, ok := request.Params.Arguments["result_type"].(string); ok {
 		input.ResultType = resultType
@@ -690,7 +690,7 @@ func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.Cal
 		violation := map[string]interface{}{
 			"id":         pr.ID,
 			"policyId":   pr.PolicyID,
-			"sbomId":     pr.SbomID,
+			"versionId":  pr.VersionID,
 			"resultType": pr.ResultType,
 			"result":     pr.Result,
 			"createdAt":  pr.CreatedAt,
@@ -698,10 +698,10 @@ func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.Cal
 		if pr.Policy != nil {
 			violation["policyName"] = pr.Policy.Name
 		}
-		if pr.Sbom != nil {
-			violation["sbomVersion"] = pr.Sbom.ProjectVersion
-			if pr.Sbom.Project != nil {
-				violation["projectName"] = pr.Sbom.Project.Name
+		if pr.Version != nil {
+			violation["version"] = pr.Version.Version
+			if pr.Version.Environment != nil {
+				violation["environmentName"] = pr.Version.Environment.Name
 			}
 		}
 		violations[i] = violation

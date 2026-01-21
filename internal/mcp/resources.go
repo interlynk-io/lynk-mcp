@@ -26,51 +26,51 @@ import (
 
 // Resource handler implementations
 
-func (s *Server) handleSbomResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	sbomID := extractPathParam(request.Params.URI, "sbom_id")
-	if sbomID == "" {
-		return nil, fmt.Errorf("missing sbom_id in URI")
+func (s *Server) handleVersionResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	versionID := extractPathParam(request.Params.URI, "version_id")
+	if versionID == "" {
+		return nil, fmt.Errorf("missing version_id in URI")
 	}
 
-	sbom, err := s.client.GetSbom(ctx, sbomID)
+	version, err := s.client.GetVersion(ctx, versionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get SBOM: %w", err)
+		return nil, fmt.Errorf("failed to get version: %w", err)
 	}
 
 	result := map[string]interface{}{
-		"id":             sbom.ID,
-		"projectVersion": sbom.ProjectVersion,
-		"spec":           sbom.Spec,
-		"specVersion":    sbom.SpecVersion,
-		"format":         sbom.Format,
-		"lifecycle":      sbom.Lifecycle,
-		"projectId":      sbom.ProjectID,
-		"createdAt":      sbom.CreatedAt,
-		"updatedAt":      sbom.UpdatedAt,
+		"id":            version.ID,
+		"version":       version.Version,
+		"spec":          version.Spec,
+		"specVersion":   version.SpecVersion,
+		"format":        version.Format,
+		"lifecycle":     version.Lifecycle,
+		"environmentId": version.EnvironmentID,
+		"createdAt":     version.CreatedAt,
+		"updatedAt":     version.UpdatedAt,
 	}
 
-	if sbom.Stats != nil {
+	if version.Stats != nil {
 		result["stats"] = map[string]interface{}{
-			"componentCount":         sbom.Stats.CompCount,
-			"componentWithPurl":      sbom.Stats.CompPurlCount,
-			"componentWithCpe":       sbom.Stats.CompCpeCount,
-			"componentWithLicense":   sbom.Stats.CompLicenseCount,
-			"componentWithSupplier":  sbom.Stats.CompSupplierCount,
-			"vulnerabilities":        sbom.Stats.VulnStats,
+			"componentCount":        version.Stats.CompCount,
+			"componentWithPurl":     version.Stats.CompPurlCount,
+			"componentWithCpe":      version.Stats.CompCpeCount,
+			"componentWithLicense":  version.Stats.CompLicenseCount,
+			"componentWithSupplier": version.Stats.CompSupplierCount,
+			"vulnerabilities":       version.Stats.VulnStats,
 		}
 	}
 
-	if sbom.Project != nil {
-		result["project"] = map[string]interface{}{
-			"id":             sbom.Project.ID,
-			"name":           sbom.Project.Name,
-			"projectGroupId": sbom.Project.ProjectGroupID,
+	if version.Environment != nil {
+		result["environment"] = map[string]interface{}{
+			"id":        version.Environment.ID,
+			"name":      version.Environment.Name,
+			"productId": version.Environment.ProductID,
 		}
 	}
 
 	jsonData, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal SBOM: %w", err)
+		return nil, fmt.Errorf("failed to marshal version: %w", err)
 	}
 
 	return []mcp.ResourceContents{
@@ -82,16 +82,16 @@ func (s *Server) handleSbomResource(ctx context.Context, request mcp.ReadResourc
 	}, nil
 }
 
-func (s *Server) handleSbomComponentsResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	sbomID := extractPathParam(request.Params.URI, "sbom_id")
-	if sbomID == "" {
-		return nil, fmt.Errorf("missing sbom_id in URI")
+func (s *Server) handleVersionComponentsResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	versionID := extractPathParam(request.Params.URI, "version_id")
+	if versionID == "" {
+		return nil, fmt.Errorf("missing version_id in URI")
 	}
 
 	// Fetch all components (using a large limit)
 	result, err := s.client.ListComponents(ctx, api.ListComponentsInput{
-		SbomID: sbomID,
-		First:  1000,
+		VersionID: versionID,
+		First:     1000,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list components: %w", err)
@@ -114,7 +114,7 @@ func (s *Server) handleSbomComponentsResource(ctx context.Context, request mcp.R
 	}
 
 	output := map[string]interface{}{
-		"sbomId":     sbomID,
+		"versionId":  versionID,
 		"components": components,
 		"totalCount": result.TotalCount,
 	}
@@ -133,16 +133,16 @@ func (s *Server) handleSbomComponentsResource(ctx context.Context, request mcp.R
 	}, nil
 }
 
-func (s *Server) handleSbomVulnerabilitiesResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	sbomID := extractPathParam(request.Params.URI, "sbom_id")
-	if sbomID == "" {
-		return nil, fmt.Errorf("missing sbom_id in URI")
+func (s *Server) handleVersionVulnerabilitiesResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	versionID := extractPathParam(request.Params.URI, "version_id")
+	if versionID == "" {
+		return nil, fmt.Errorf("missing version_id in URI")
 	}
 
 	// Fetch all vulnerabilities
-	result, err := s.client.ListSbomVulns(ctx, api.ListSbomVulnsInput{
-		SbomID: sbomID,
-		First:  1000,
+	result, err := s.client.ListVersionVulns(ctx, api.ListVersionVulnsInput{
+		VersionID: versionID,
+		First:     1000,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list vulnerabilities: %w", err)
@@ -182,7 +182,7 @@ func (s *Server) handleSbomVulnerabilitiesResource(ctx context.Context, request 
 	}
 
 	output := map[string]interface{}{
-		"sbomId":          sbomID,
+		"versionId":       versionID,
 		"vulnerabilities": vulns,
 		"totalCount":      result.TotalCount,
 	}
@@ -201,47 +201,47 @@ func (s *Server) handleSbomVulnerabilitiesResource(ctx context.Context, request 
 	}, nil
 }
 
-func (s *Server) handleProjectLatestSbomResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	projectID := extractPathParam(request.Params.URI, "project_id")
-	if projectID == "" {
-		return nil, fmt.Errorf("missing project_id in URI")
+func (s *Server) handleEnvironmentLatestVersionResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	environmentID := extractPathParam(request.Params.URI, "environment_id")
+	if environmentID == "" {
+		return nil, fmt.Errorf("missing environment_id in URI")
 	}
 
-	// Get the most recent SBOM for the project
-	result, err := s.client.ListSboms(ctx, api.ListSbomsInput{
-		ProjectID: projectID,
-		First:     1,
+	// Get the most recent version for the environment
+	result, err := s.client.ListVersions(ctx, api.ListVersionsInput{
+		EnvironmentID: environmentID,
+		First:         1,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list SBOMs: %w", err)
+		return nil, fmt.Errorf("failed to list versions: %w", err)
 	}
 
-	if len(result.Sboms) == 0 {
-		return nil, fmt.Errorf("no SBOMs found for project")
+	if len(result.Versions) == 0 {
+		return nil, fmt.Errorf("no versions found for environment")
 	}
 
-	sbom := result.Sboms[0]
+	version := result.Versions[0]
 	output := map[string]interface{}{
-		"id":             sbom.ID,
-		"projectVersion": sbom.ProjectVersion,
-		"spec":           sbom.Spec,
-		"specVersion":    sbom.SpecVersion,
-		"format":         sbom.Format,
-		"lifecycle":      sbom.Lifecycle,
-		"createdAt":      sbom.CreatedAt,
-		"updatedAt":      sbom.UpdatedAt,
+		"id":          version.ID,
+		"version":     version.Version,
+		"spec":        version.Spec,
+		"specVersion": version.SpecVersion,
+		"format":      version.Format,
+		"lifecycle":   version.Lifecycle,
+		"createdAt":   version.CreatedAt,
+		"updatedAt":   version.UpdatedAt,
 	}
 
-	if sbom.Stats != nil {
+	if version.Stats != nil {
 		output["stats"] = map[string]interface{}{
-			"componentCount":  sbom.Stats.CompCount,
-			"vulnerabilities": sbom.Stats.VulnStats,
+			"componentCount":  version.Stats.CompCount,
+			"vulnerabilities": version.Stats.VulnStats,
 		}
 	}
 
 	jsonData, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal SBOM: %w", err)
+		return nil, fmt.Errorf("failed to marshal version: %w", err)
 	}
 
 	return []mcp.ResourceContents{
@@ -339,7 +339,7 @@ func (s *Server) handleVulnerabilityResource(ctx context.Context, request mcp.Re
 
 // Helper function to extract path parameters from URI
 func extractPathParam(uri, paramName string) string {
-	// Parse URIs like sbom:///abc-123/components
+	// Parse URIs like version:///abc-123/components
 	// or vulnerability:///CVE-2021-44228
 
 	// Remove the scheme prefix
@@ -354,11 +354,11 @@ func extractPathParam(uri, paramName string) string {
 		return ""
 	}
 
-	// For simple URIs like sbom:///{sbom_id}, the ID is the first part
-	// For URIs like sbom:///{sbom_id}/components, the ID is still the first part
+	// For simple URIs like version:///{version_id}, the ID is the first part
+	// For URIs like version:///{version_id}/components, the ID is still the first part
 	// For URIs like vulnerability:///{cve_id}, the ID is the first part
 	switch paramName {
-	case "sbom_id", "project_id", "cve_id":
+	case "version_id", "environment_id", "cve_id":
 		return parts[0]
 	}
 

@@ -53,7 +53,7 @@ type ComponentVuln struct {
 	ID               string
 	ComponentID      string
 	VulnID           string
-	SbomID           string
+	VersionID        string
 	FixedIn          string
 	FixedVersions    []string
 	Detail           string
@@ -61,7 +61,7 @@ type ComponentVuln struct {
 	ActionStmt       string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
-	Component        *SbomComponent
+	Component        *VersionComponent
 	Vuln             *Vuln
 	VexStatus        *VexStatus
 	VexJustification *VexJustification
@@ -87,21 +87,21 @@ type ComponentVulnsResult struct {
 	EndCursor      string
 }
 
-// ListSbomVulnsInput contains parameters for listing SBOM vulnerabilities
-type ListSbomVulnsInput struct {
-	SbomID   string
-	First    int
-	After    string
-	Severity []string
-	Status   []string
-	Kev      *bool
-	Search   string
+// ListVersionVulnsInput contains parameters for listing version vulnerabilities
+type ListVersionVulnsInput struct {
+	VersionID string
+	First     int
+	After     string
+	Severity  []string
+	Status    []string
+	Kev       *bool
+	Search    string
 }
 
-// ListSbomVulns fetches vulnerabilities for an SBOM
-func (c *Client) ListSbomVulns(ctx context.Context, input ListSbomVulnsInput) (*ComponentVulnsResult, error) {
+// ListVersionVulns fetches vulnerabilities for a version
+func (c *Client) ListVersionVulns(ctx context.Context, input ListVersionVulnsInput) (*ComponentVulnsResult, error) {
 	vars := map[string]interface{}{
-		"sbomId": input.SbomID,
+		"sbomId": input.VersionID,
 	}
 	if input.First > 0 {
 		vars["first"] = input.First
@@ -191,7 +191,7 @@ func (c *Client) ListSbomVulns(ctx context.Context, input ListSbomVulnsInput) (*
 			ID:            n.ID,
 			ComponentID:   n.ComponentID,
 			VulnID:        n.VulnID,
-			SbomID:        n.SbomID,
+			VersionID:     n.SbomID,
 			FixedIn:       n.FixedIn,
 			FixedVersions: n.FixedVersions,
 			Detail:        n.Detail,
@@ -201,7 +201,7 @@ func (c *Client) ListSbomVulns(ctx context.Context, input ListSbomVulnsInput) (*
 			UpdatedAt:     n.UpdatedAt,
 		}
 		if n.Component != nil {
-			cv.Component = &SbomComponent{
+			cv.Component = &VersionComponent{
 				ID:      n.Component.ID,
 				Name:    n.Component.Name,
 				Version: n.Component.Version,
@@ -375,14 +375,14 @@ func (c *Client) lookupByCveID(ctx context.Context, vulnID string) (*Vuln, error
 
 // ListComponentVulnsInput contains parameters for listing component vulnerabilities
 type ListComponentVulnsInput struct {
-	First           int
-	After           string
-	Severity        []string
-	Status          []string
-	Kev             *bool
-	Search          string
-	ProjectIDs      []string
-	ProjectGroupIDs []string
+	First          int
+	After          string
+	Severity       []string
+	Status         []string
+	Kev            *bool
+	Search         string
+	EnvironmentIDs []string
+	ProductIDs     []string
 }
 
 // ListComponentVulns fetches component vulnerabilities across the organization
@@ -408,11 +408,11 @@ func (c *Client) ListComponentVulns(ctx context.Context, input ListComponentVuln
 	if input.Search != "" {
 		vars["search"] = input.Search
 	}
-	if len(input.ProjectIDs) > 0 {
-		vars["projectIds"] = input.ProjectIDs
+	if len(input.EnvironmentIDs) > 0 {
+		vars["projectIds"] = input.EnvironmentIDs
 	}
-	if len(input.ProjectGroupIDs) > 0 {
-		vars["projectGroupIds"] = input.ProjectGroupIDs
+	if len(input.ProductIDs) > 0 {
+		vars["projectGroupIds"] = input.ProductIDs
 	}
 
 	var result struct {
@@ -469,19 +469,19 @@ func (c *Client) ListComponentVulns(ctx context.Context, input ListComponentVuln
 			ID:            n.ID,
 			ComponentID:   n.ComponentID,
 			VulnID:        n.VulnID,
-			SbomID:        n.SbomID,
+			VersionID:     n.SbomID,
 			FixedIn:       n.FixedIn,
 			FixedVersions: n.FixedVersions,
 			CreatedAt:     n.CreatedAt,
 			UpdatedAt:     n.UpdatedAt,
 		}
 		if n.Component != nil {
-			cv.Component = &SbomComponent{
-				ID:      n.Component.ID,
-				Name:    n.Component.Name,
-				Version: n.Component.Version,
-				Purl:    n.Component.Purl,
-				SbomID:  n.Component.SbomID,
+			cv.Component = &VersionComponent{
+				ID:        n.Component.ID,
+				Name:      n.Component.Name,
+				Version:   n.Component.Version,
+				Purl:      n.Component.Purl,
+				VersionID: n.Component.SbomID,
 			}
 		}
 		if n.Vuln != nil {

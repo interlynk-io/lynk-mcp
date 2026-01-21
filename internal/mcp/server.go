@@ -37,7 +37,7 @@ func NewServer(client *api.Client, logger *zap.Logger) *Server {
 
 	// Create MCP server
 	mcpServer := server.NewMCPServer(
-		"lynk-sbom",
+		"lynk-version",
 		"1.0.0",
 		server.WithToolCapabilities(true),
 		server.WithResourceCapabilities(true, false),
@@ -62,53 +62,53 @@ func (s *Server) registerTools() {
 		mcp.WithDescription("Get current organization information including metrics"),
 	), s.handleGetOrganization)
 
-	// Project Group tools
-	s.mcp.AddTool(mcp.NewTool("list_project_groups",
-		mcp.WithDescription("List all products/project groups in the organization"),
+	// Product tools
+	s.mcp.AddTool(mcp.NewTool("list_products",
+		mcp.WithDescription("List all products in the organization"),
 		mcp.WithString("search", mcp.Description("Search term to filter by name")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 20)")),
-	), s.handleListProjectGroups)
+	), s.handleListProducts)
 
-	s.mcp.AddTool(mcp.NewTool("get_project_group",
-		mcp.WithDescription("Get details of a specific project group including its projects"),
-		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the project group")),
-	), s.handleGetProjectGroup)
+	s.mcp.AddTool(mcp.NewTool("get_product",
+		mcp.WithDescription("Get details of a specific product including its environments"),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the product")),
+	), s.handleGetProduct)
 
-	// Project tools
-	s.mcp.AddTool(mcp.NewTool("list_projects",
-		mcp.WithDescription("List projects/streams within a project group"),
-		mcp.WithString("project_group_id", mcp.Required(), mcp.Description("The UUID of the project group")),
+	// Environment tools
+	s.mcp.AddTool(mcp.NewTool("list_environments",
+		mcp.WithDescription("List environments within a product"),
+		mcp.WithString("product_id", mcp.Required(), mcp.Description("The UUID of the product")),
 		mcp.WithString("search", mcp.Description("Search term to filter by name")),
-	), s.handleListProjects)
+	), s.handleListEnvironments)
 
-	s.mcp.AddTool(mcp.NewTool("get_project",
-		mcp.WithDescription("Get details of a specific project/stream"),
-		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the project")),
-	), s.handleGetProject)
+	s.mcp.AddTool(mcp.NewTool("get_environment",
+		mcp.WithDescription("Get details of a specific environment"),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the environment")),
+	), s.handleGetEnvironment)
 
-	// SBOM tools
-	s.mcp.AddTool(mcp.NewTool("list_sboms",
-		mcp.WithDescription("List SBOMs in a project"),
-		mcp.WithString("project_id", mcp.Required(), mcp.Description("The UUID of the project")),
+	// Version tools
+	s.mcp.AddTool(mcp.NewTool("list_versions",
+		mcp.WithDescription("List versions in an environment"),
+		mcp.WithString("environment_id", mcp.Required(), mcp.Description("The UUID of the environment")),
 		mcp.WithString("lifecycle", mcp.Description("Filter by lifecycle stage (e.g., released, development)")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 20)")),
-	), s.handleListSboms)
+	), s.handleListVersions)
 
-	s.mcp.AddTool(mcp.NewTool("get_sbom",
-		mcp.WithDescription("Get details of a specific SBOM including statistics"),
-		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the SBOM")),
-	), s.handleGetSbom)
+	s.mcp.AddTool(mcp.NewTool("get_version",
+		mcp.WithDescription("Get details of a specific version including statistics"),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the version")),
+	), s.handleGetVersion)
 
-	s.mcp.AddTool(mcp.NewTool("compare_sboms",
-		mcp.WithDescription("Compare two SBOMs and show the differences (drift analysis)"),
-		mcp.WithString("source_sbom_id", mcp.Required(), mcp.Description("The UUID of the source SBOM")),
-		mcp.WithString("target_sbom_id", mcp.Required(), mcp.Description("The UUID of the target SBOM to compare against")),
-	), s.handleCompareSboms)
+	s.mcp.AddTool(mcp.NewTool("compare_versions",
+		mcp.WithDescription("Compare two versions and show the differences (drift analysis)"),
+		mcp.WithString("source_version_id", mcp.Required(), mcp.Description("The UUID of the source version")),
+		mcp.WithString("target_version_id", mcp.Required(), mcp.Description("The UUID of the target version to compare against")),
+	), s.handleCompareVersions)
 
 	// Component tools
 	s.mcp.AddTool(mcp.NewTool("list_components",
-		mcp.WithDescription("List components in an SBOM"),
-		mcp.WithString("sbom_id", mcp.Required(), mcp.Description("The UUID of the SBOM")),
+		mcp.WithDescription("List components in a version"),
+		mcp.WithString("version_id", mcp.Required(), mcp.Description("The UUID of the version")),
 		mcp.WithString("search", mcp.Description("Search term to filter components")),
 		mcp.WithString("kind", mcp.Description("Filter by component kind (e.g., library, application)")),
 		mcp.WithBoolean("direct", mcp.Description("Filter to direct dependencies only")),
@@ -118,13 +118,13 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(mcp.NewTool("get_component",
 		mcp.WithDescription("Get details of a specific component"),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the component")),
-		mcp.WithString("sbom_id", mcp.Required(), mcp.Description("The UUID of the SBOM containing the component")),
+		mcp.WithString("version_id", mcp.Required(), mcp.Description("The UUID of the version containing the component")),
 	), s.handleGetComponent)
 
 	// Vulnerability tools
 	s.mcp.AddTool(mcp.NewTool("list_vulnerabilities",
-		mcp.WithDescription("List vulnerabilities in an SBOM with optional filters"),
-		mcp.WithString("sbom_id", mcp.Required(), mcp.Description("The UUID of the SBOM")),
+		mcp.WithDescription("List vulnerabilities in a version with optional filters"),
+		mcp.WithString("version_id", mcp.Required(), mcp.Description("The UUID of the version")),
 		mcp.WithString("severity", mcp.Description("Filter by severity (critical, high, medium, low)")),
 		mcp.WithString("vex_status", mcp.Description("Filter by VEX status (e.g., affected, not_affected, fixed)")),
 		mcp.WithBoolean("kev", mcp.Description("Filter to only KEV (Known Exploited Vulnerabilities)")),
@@ -160,14 +160,14 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(mcp.NewTool("list_policy_violations",
 		mcp.WithDescription("List policy evaluation results/violations"),
 		mcp.WithString("policy_id", mcp.Description("Filter by policy UUID")),
-		mcp.WithString("sbom_id", mcp.Description("Filter by SBOM UUID")),
+		mcp.WithString("version_id", mcp.Description("Filter by version UUID")),
 		mcp.WithString("result_type", mcp.Description("Filter by result type (pass, fail, warn)")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
 	), s.handleListPolicyViolations)
 
 	// License tools
 	s.mcp.AddTool(mcp.NewTool("list_licenses",
-		mcp.WithDescription("List licenses used in the organization's SBOMs"),
+		mcp.WithDescription("List licenses used in the organization's versions"),
 		mcp.WithString("status", mcp.Description("Filter by license status (approved, rejected, unspecified)")),
 		mcp.WithString("search", mcp.Description("Search term to filter licenses")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
@@ -179,38 +179,38 @@ func (s *Server) registerResources() {
 	// Register resource templates
 	s.mcp.AddResourceTemplate(
 		mcp.NewResourceTemplate(
-			"sbom:///{sbom_id}",
-			"Complete SBOM information",
+			"version:///{version_id}",
+			"Complete version information",
 			mcp.WithTemplateMIMEType("application/json"),
 		),
-		s.handleSbomResource,
+		s.handleVersionResource,
 	)
 
 	s.mcp.AddResourceTemplate(
 		mcp.NewResourceTemplate(
-			"sbom:///{sbom_id}/components",
-			"All components in an SBOM",
+			"version:///{version_id}/components",
+			"All components in a version",
 			mcp.WithTemplateMIMEType("application/json"),
 		),
-		s.handleSbomComponentsResource,
+		s.handleVersionComponentsResource,
 	)
 
 	s.mcp.AddResourceTemplate(
 		mcp.NewResourceTemplate(
-			"sbom:///{sbom_id}/vulnerabilities",
-			"All vulnerabilities in an SBOM",
+			"version:///{version_id}/vulnerabilities",
+			"All vulnerabilities in a version",
 			mcp.WithTemplateMIMEType("application/json"),
 		),
-		s.handleSbomVulnerabilitiesResource,
+		s.handleVersionVulnerabilitiesResource,
 	)
 
 	s.mcp.AddResourceTemplate(
 		mcp.NewResourceTemplate(
-			"project:///{project_id}/latest-sbom",
-			"Most recent SBOM for a project",
+			"environment:///{environment_id}/latest-version",
+			"Most recent version for an environment",
 			mcp.WithTemplateMIMEType("application/json"),
 		),
-		s.handleProjectLatestSbomResource,
+		s.handleEnvironmentLatestVersionResource,
 	)
 
 	s.mcp.AddResourceTemplate(
