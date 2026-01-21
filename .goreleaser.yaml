@@ -1,0 +1,117 @@
+project_name: lynk-mcp
+
+version: 2
+
+env:
+  - GO111MODULE=on
+
+before:
+  hooks:
+    - go mod tidy
+    - /bin/bash -c 'if [ -n "$(git --no-pager diff --exit-code go.mod go.sum)" ]; then exit 1; fi'
+
+gomod:
+  proxy: false
+
+builds:
+  - id: lynk-mcp
+    binary: lynk-mcp
+    main: ./cmd/lynk-mcp
+    flags:
+      - -trimpath
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -buildid=
+      - -X sigs.k8s.io/release-utils/version.gitVersion={{ .Version }}
+      - -X sigs.k8s.io/release-utils/version.gitCommit={{ .FullCommit }}
+      - -X sigs.k8s.io/release-utils/version.gitTreeState={{ if .IsGitDirty }}dirty{{ else }}clean{{ end }}
+      - -X sigs.k8s.io/release-utils/version.buildDate={{ .CommitDate }}
+    env:
+      - CGO_ENABLED=0
+
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    certificate: '${artifact}.pem'
+    args:
+      - sign-blob
+      - --output-certificate=${certificate}
+      - --output-signature=${signature}
+      - ${artifact}
+      - --yes
+    artifacts: archive
+    output: true
+
+archives:
+  - id: lynk-mcp
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+
+nfpms:
+  - id: lynk-mcp
+    package_name: lynk-mcp
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Interlynk
+    homepage: https://interlynk.io
+    maintainer: Interlynk Authors <hello@interlynk.io>
+    description: MCP server for Lynk SBOM management API
+    license: Apache-2.0
+    formats:
+      - apk
+      - deb
+      - rpm
+    bindir: /usr/bin
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/lynk-mcp/LICENSE
+        file_info:
+          mode: 0644
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "SNAPSHOT-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  prerelease: auto
+  draft: true
+  make_latest: true
