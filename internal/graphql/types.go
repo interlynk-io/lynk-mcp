@@ -14,7 +14,64 @@
 
 package graphql
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
+
+// FlexibleTime is a time.Time that can unmarshal from multiple date formats
+// including ISO 8601 dates with and without timezone information
+type FlexibleTime struct {
+	time.Time
+}
+
+// UnmarshalJSON implements json.Unmarshaler for FlexibleTime
+func (ft *FlexibleTime) UnmarshalJSON(data []byte) error {
+	// Handle null
+	if string(data) == "null" {
+		return nil
+	}
+
+	// Remove quotes
+	str := string(data)
+	if len(str) >= 2 && str[0] == '"' && str[len(str)-1] == '"' {
+		str = str[1 : len(str)-1]
+	}
+
+	if str == "" {
+		return nil
+	}
+
+	// Try multiple formats
+	formats := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02T15:04:05.999",
+		"2006-01-02T15:04:05",
+		"2006-01-02",
+	}
+
+	var parseErr error
+	for _, format := range formats {
+		t, err := time.Parse(format, str)
+		if err == nil {
+			ft.Time = t
+			return nil
+		}
+		parseErr = err
+	}
+
+	return parseErr
+}
+
+// MarshalJSON implements json.Marshaler for FlexibleTime
+func (ft FlexibleTime) MarshalJSON() ([]byte, error) {
+	if ft.Time.IsZero() {
+		return []byte("null"), nil
+	}
+	return json.Marshal(ft.Time.Format(time.RFC3339Nano))
+}
 
 // Organization represents a Lynk organization
 type Organization struct {
@@ -126,15 +183,15 @@ type SbomComponentConnection struct {
 
 // Vuln represents a vulnerability
 type Vuln struct {
-	ID             string    `json:"id"`
-	VulnID         string    `json:"vulnId"`
-	Description    string    `json:"desc,omitempty"`
-	Severity       string    `json:"sev,omitempty"`
-	CvssScore      float64   `json:"cvssScore,omitempty"`
-	CvssVector     string    `json:"cvssVector,omitempty"`
-	Source         string    `json:"source,omitempty"`
-	PublishedAt    time.Time `json:"publishedAt,omitempty"`
-	LastModifiedAt time.Time `json:"lastModifiedAt,omitempty"`
+	ID             string       `json:"id"`
+	VulnID         string       `json:"vulnId"`
+	Description    string       `json:"desc,omitempty"`
+	Severity       string       `json:"sev,omitempty"`
+	CvssScore      float64      `json:"cvssScore,omitempty"`
+	CvssVector     string       `json:"cvssVector,omitempty"`
+	Source         string       `json:"source,omitempty"`
+	PublishedAt    FlexibleTime `json:"publishedAt,omitempty"`
+	LastModifiedAt FlexibleTime `json:"lastModifiedAt,omitempty"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 	VulnInfo       *VulnInfo `json:"vulnInfo,omitempty"`
 }
@@ -193,21 +250,19 @@ type Policy struct {
 	ID          string       `json:"id"`
 	Name        string       `json:"name"`
 	Description string       `json:"description,omitempty"`
-	Enabled     bool         `json:"enabled"`
-	RulesCount  int          `json:"rulesCount,omitempty"`
+	IsEnabled   bool         `json:"isEnabled"`
+	ResultType  string       `json:"resultType,omitempty"`
 	UpdatedAt   time.Time    `json:"updatedAt"`
 	PolicyRules []PolicyRule `json:"policyRules,omitempty"`
 }
 
 // PolicyRule represents a rule within a policy
 type PolicyRule struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Subject     string `json:"subject"`
-	Operator    string `json:"operator"`
-	Value       string `json:"value"`
-	Enabled     bool   `json:"enabled"`
-	FailMessage string `json:"failMessage,omitempty"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Subject  string `json:"subject"`
+	Operator string `json:"operator"`
+	Value    string `json:"value"`
 }
 
 // PolicyConnection represents a paginated list of policies
@@ -219,13 +274,14 @@ type PolicyConnection struct {
 
 // PolicyResult represents a policy evaluation result
 type PolicyResult struct {
-	ID         string `json:"id"`
-	PolicyID   string `json:"policyId"`
-	SbomID     string `json:"sbomId"`
-	ResultType string `json:"resultType"`
-	EvaluatedAt time.Time `json:"evaluatedAt"`
-	Policy     *Policy `json:"policy,omitempty"`
-	Sbom       *Sbom   `json:"sbom,omitempty"`
+	ID         string    `json:"id"`
+	PolicyID   string    `json:"policyId"`
+	SbomID     string    `json:"sbomId"`
+	ResultType string    `json:"resultType"`
+	Result     string    `json:"result,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+	Policy     *Policy   `json:"policy,omitempty"`
+	Sbom       *Sbom     `json:"sbom,omitempty"`
 }
 
 // PolicyResultConnection represents a paginated list of policy results
@@ -250,7 +306,8 @@ type OrganizationLicense struct {
 
 // LicenseContent represents license content (either standard or custom)
 type LicenseContent struct {
-	ShortID string `json:"shortId,omitempty"`
+	ShortID string `json:"shortId,omitempty"` // For standard License
+	SpdxID  string `json:"spdxId,omitempty"`  // For LicenseCustom
 	Name    string `json:"name,omitempty"`
 }
 

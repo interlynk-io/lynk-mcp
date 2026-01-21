@@ -34,13 +34,11 @@ type Policy struct {
 
 // PolicyRule represents a rule within a policy
 type PolicyRule struct {
-	ID          string
-	Name        string
-	Subject     string
-	Operator    string
-	Value       string
-	Enabled     bool
-	FailMessage string
+	ID       string
+	Name     string
+	Subject  string
+	Operator string
+	Value    string
 }
 
 // PolicyResult represents a policy evaluation result
@@ -172,13 +170,11 @@ func (c *Client) GetPolicy(ctx context.Context, id string) (*Policy, error) {
 			ResultType  string    `json:"resultType"`
 			UpdatedAt   time.Time `json:"updatedAt"`
 			PolicyRules []struct {
-				ID          string `json:"id"`
-				Name        string `json:"name"`
-				Subject     string `json:"subject"`
-				Operator    string `json:"operator"`
-				Value       string `json:"value"`
-				Enabled     bool   `json:"enabled"`
-				FailMessage string `json:"failMessage"`
+				ID       string `json:"id"`
+				Name     string `json:"name"`
+				Subject  string `json:"subject"`
+				Operator string `json:"operator"`
+				Value    string `json:"value"`
 			} `json:"policyRules"`
 		} `json:"policy"`
 	}
@@ -190,13 +186,11 @@ func (c *Client) GetPolicy(ctx context.Context, id string) (*Policy, error) {
 	rules := make([]PolicyRule, len(result.Policy.PolicyRules))
 	for i, r := range result.Policy.PolicyRules {
 		rules[i] = PolicyRule{
-			ID:          r.ID,
-			Name:        r.Name,
-			Subject:     r.Subject,
-			Operator:    r.Operator,
-			Value:       r.Value,
-			Enabled:     r.Enabled,
-			FailMessage: r.FailMessage,
+			ID:       r.ID,
+			Name:     r.Name,
+			Subject:  r.Subject,
+			Operator: r.Operator,
+			Value:    r.Value,
 		}
 	}
 

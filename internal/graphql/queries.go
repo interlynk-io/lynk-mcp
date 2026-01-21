@@ -427,8 +427,6 @@ const (
 					subject
 					operator
 					value
-					enabled
-					failMessage
 				}
 			}
 		}

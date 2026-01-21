@@ -645,13 +645,11 @@ func (s *Server) handleGetPolicy(ctx context.Context, request mcp.CallToolReques
 	rules := make([]map[string]interface{}, len(policy.PolicyRules))
 	for i, r := range policy.PolicyRules {
 		rules[i] = map[string]interface{}{
-			"id":          r.ID,
-			"name":        r.Name,
-			"subject":     r.Subject,
-			"operator":    r.Operator,
-			"value":       r.Value,
-			"enabled":     r.Enabled,
-			"failMessage": r.FailMessage,
+			"id":       r.ID,
+			"name":     r.Name,
+			"subject":  r.Subject,
+			"operator": r.Operator,
+			"value":    r.Value,
 		}
 	}
 
