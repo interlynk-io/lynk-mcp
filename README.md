@@ -1,6 +1,6 @@
 # lynk-mcp: AI-Powered SBOM & Vulnerability Management
 
-MCP (Model Context Protocol) server for Lynk version management API. This server enables AI assistants like Claude, Cursor, and VS Code Copilot to interact with your Lynk organization for SBOM management, vulnerability tracking, and compliance checking.
+MCP server for Interlynk API. This server enables AI assistants like Claude, Cursor, and VS Code Copilot to interact with your Lynk organization for SBOM management, vulnerability tracking, and compliance checking.
 
 ## Quick Start
 
