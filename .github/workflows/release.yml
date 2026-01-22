@@ -1,0 +1,108 @@
+name: Release | Build Binary
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  TOOL_NAME: ${{ github.repository }}
+  LATEST_TAG: v0.0.1
+  SUPPLIER_NAME: Interlynk
+  SUPPLIER_URL: https://interlynk.io
+  MS_SBOM_TOOL_VERSION: "4.1.3"
+  MS_SBOM_TOOL_EXCLUDE_DIRS: "**/samples/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci-tests:
+    name: Run CI Tests
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+  releaser:
+    needs: ci-tests
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write      # Required for Cosign OIDC keyless signing
+      contents: write      # Required for creating releases
+      attestations: write  # Required for build attestations
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all tags
+        run: git fetch --force --tags
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          check-latest: true
+          cache: true
+
+      - name: Get Tag
+        id: get_tag
+        run: echo "LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo 'v0.0.1')" >> $GITHUB_ENV
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify tool versions
+        run: |
+          go version
+          goreleaser -v
+          cosign version
+
+      - name: Download and verify sbom-tool
+        run: |
+          curl -Lo /tmp/sbom-tool "https://github.com/microsoft/sbom-tool/releases/download/v${{ env.MS_SBOM_TOOL_VERSION }}/sbom-tool-linux-x64"
+          if [ ! -f /tmp/sbom-tool ]; then
+            echo "Error: sbom-tool download failed"
+            exit 1
+          fi
+          chmod +x /tmp/sbom-tool
+
+      - name: Run GoReleaser
+        run: make release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SBOM
+        run: |
+          mkdir -p sbom-output
+          /tmp/sbom-tool generate \
+            -b sbom-output \
+            -bc . \
+            -pn "${{ env.TOOL_NAME }}" \
+            -pv "${{ env.LATEST_TAG }}" \
+            -ps "${{ env.SUPPLIER_NAME }}" \
+            -nsb "${{ env.SUPPLIER_URL }}" \
+            -cd "--DirectoryExclusionList ${{ env.MS_SBOM_TOOL_EXCLUDE_DIRS }}"
+
+      - name: Upload SBOM as Release Asset
+        uses: actions/upload-artifact@v5
+        with:
+          name: sbom
+          path: sbom-output/_manifest/spdx_2.2/manifest.spdx.json
+          if-no-files-found: error
