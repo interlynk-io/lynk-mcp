@@ -85,6 +85,29 @@ nfpms:
         file_info:
           mode: 0644
 
+brews:
+  - name: lynk-mcp
+    ids:
+      - lynk-mcp
+    repository:
+      owner: interlynk-io
+      name: homebrew-interlynk
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    url_template: "https://github.com/interlynk-io/lynk-mcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_author:
+      name: interlynk-io
+      email: hello@interlynk.io
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    directory: Formula
+    homepage: "https://interlynk.io"
+    description: "MCP server for Lynk - AI-powered SBOM & vulnerability management"
+    license: "Apache-2.0"
+    skip_upload: auto
+    test: |
+      system "#{bin}/lynk-mcp", "version"
+    install: |
+      bin.install "lynk-mcp"
+
 checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
