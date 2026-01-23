@@ -10,7 +10,10 @@
       "Bash(git remote set-url:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(LYNK_API_TOKEN=lynk_live_test123 ./lynk-mcp-test:*)",
+      "Bash(docker build:*)",
+      "Bash(docker run:*)"
     ]
   }
 }
