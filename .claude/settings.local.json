@@ -3,7 +3,14 @@
     "allow": [
       "Bash(goreleaser check:*)",
       "Bash(make build:*)",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(git -C /home/riteshnoronha/Work/interlynk-io/sbomqs log --oneline)",
+      "Bash(git -C /home/riteshnoronha/Work/interlynk-io/sbomqs tag)",
+      "WebSearch",
+      "Bash(git remote set-url:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
