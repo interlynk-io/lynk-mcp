@@ -93,6 +93,8 @@ brews:
       owner: interlynk-io
       name: homebrew-interlynk
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
     url_template: "https://github.com/interlynk-io/lynk-mcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     commit_author:
       name: interlynk-io
