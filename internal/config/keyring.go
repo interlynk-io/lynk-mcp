@@ -62,8 +62,22 @@ func StoreToken(token string) error {
 	return nil
 }
 
-// GetToken retrieves the API token from the system keychain
+// EnvTokenKey is the environment variable name for the API token
+const EnvTokenKey = "LYNK_API_TOKEN"
+
+// GetToken retrieves the API token, checking environment variable first,
+// then falling back to the system keychain. This allows Docker/CI usage
+// where a keyring is not available.
 func GetToken() (string, error) {
+	// Check environment variable first (useful for Docker/CI environments)
+	if token := os.Getenv(EnvTokenKey); token != "" {
+		if !ValidateTokenFormat(token) {
+			return "", fmt.Errorf("invalid token format in %s: must start with lynk_live_, lynk_staging_, or lynk_test_", EnvTokenKey)
+		}
+		return token, nil
+	}
+
+	// Fall back to keyring
 	ring, err := openKeyring()
 	if err != nil {
 		return "", fmt.Errorf("failed to open keyring: %w", err)

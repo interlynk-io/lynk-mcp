@@ -127,7 +127,7 @@ func runVerify(cmd *cobra.Command, args []string) error {
 
 	token, err := config.GetToken()
 	if err != nil {
-		return fmt.Errorf("failed to get token: %w (run 'lynk-mcp configure' first)", err)
+		return fmt.Errorf("failed to get token: %w (run 'lynk-mcp configure' or set %s environment variable)", err, config.EnvTokenKey)
 	}
 
 	fmt.Printf("Connecting to %s...\n", cfg.API.Endpoint)
@@ -161,7 +161,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	token, err := config.GetToken()
 	if err != nil {
-		return fmt.Errorf("failed to get token: %w (run 'lynk-mcp configure' first)", err)
+		return fmt.Errorf("failed to get token: %w (run 'lynk-mcp configure' or set %s environment variable)", err, config.EnvTokenKey)
 	}
 
 	// Setup logger
