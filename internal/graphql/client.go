@@ -18,17 +18,32 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
+
+	"github.com/interlynk-io/lynk-mcp/internal/retry"
 )
+
+// HTTPError represents an HTTP error response with a status code.
+type HTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("unexpected status code %d: %s", e.StatusCode, e.Body)
+}
 
 // Client is a GraphQL client for the Lynk API
 type Client struct {
-	endpoint   string
-	token      string
-	httpClient *http.Client
+	endpoint    string
+	token       string
+	httpClient  *http.Client
+	retryConfig retry.Config
 }
 
 // NewClient creates a new GraphQL client
@@ -39,6 +54,7 @@ func NewClient(endpoint, token string, timeout time.Duration) *Client {
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
+		retryConfig: retry.DefaultTransientConfig(),
 	}
 }
 
@@ -68,8 +84,31 @@ type ErrorLocation struct {
 	Column int `json:"column"`
 }
 
-// Execute executes a GraphQL query and returns the response
+// isTransientError returns true for errors that are worth retrying:
+// 5xx server errors, 429 rate limiting, and network-level errors.
+func isTransientError(err error) bool {
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.StatusCode >= 500 || httpErr.StatusCode == http.StatusTooManyRequests
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+
+	return false
+}
+
+// Execute executes a GraphQL query with automatic retry for transient errors.
 func (c *Client) Execute(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
+	return retry.Do(ctx, c.retryConfig, func() error {
+		return c.executeOnce(ctx, query, variables, result)
+	}, isTransientError, nil)
+}
+
+// executeOnce performs a single GraphQL request.
+func (c *Client) executeOnce(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
 	req := Request{
 		Query:     query,
 		Variables: variables,
@@ -101,7 +140,7 @@ func (c *Client) Execute(ctx context.Context, query string, variables map[string
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+		return &HTTPError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
 	var graphQLResp Response
