@@ -17,10 +17,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/interlynk-io/lynk-mcp/internal/api"
 	"github.com/interlynk-io/lynk-mcp/internal/config"
 	"github.com/interlynk-io/lynk-mcp/internal/mcp"
+	"github.com/interlynk-io/lynk-mcp/internal/retry"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"sigs.k8s.io/release-utils/version"
@@ -134,9 +136,20 @@ func runVerify(cmd *cobra.Command, args []string) error {
 
 	client := api.NewClient(cfg.API.Endpoint, token, cfg.API.Timeout)
 
-	org, err := client.GetOrganization(cmd.Context())
+	var org *api.Organization
+	start := time.Now()
+
+	err = retry.Do(cmd.Context(), retry.DefaultVerifyConfig(), func() error {
+		var getErr error
+		org, getErr = client.GetOrganization(cmd.Context())
+		return getErr
+	}, nil, func(attempt int, retryErr error, delay time.Duration) {
+		elapsed := time.Since(start).Truncate(time.Second)
+		fmt.Printf("  Attempt %d failed (%s elapsed): %v\n", attempt, elapsed, retryErr)
+		fmt.Printf("  Token may still be propagating. Retrying in %s...\n", delay.Truncate(time.Second))
+	})
 	if err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
+		return fmt.Errorf("failed to connect after %s: %w", time.Since(start).Truncate(time.Second), err)
 	}
 
 	fmt.Println()
