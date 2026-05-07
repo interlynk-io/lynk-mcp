@@ -21,9 +21,13 @@ import (
 	"github.com/interlynk-io/lynk-mcp/internal/graphql"
 )
 
+type graphQLExecutor interface {
+	Execute(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error
+}
+
 // Client provides high-level operations for the Lynk API
 type Client struct {
-	gql *graphql.Client
+	gql graphQLExecutor
 }
 
 // NewClient creates a new API client

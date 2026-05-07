@@ -16,10 +16,13 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/interlynk-io/lynk-mcp/internal/graphql"
 )
+
+const getProductEnvironmentsPageSize = 100
 
 // Product represents a product (formerly project group)
 type Product struct {
@@ -123,57 +126,85 @@ func (c *Client) ListProducts(ctx context.Context, input ListProductsInput) (*Pr
 
 // GetProduct fetches a single product by ID
 func (c *Client) GetProduct(ctx context.Context, id string) (*Product, error) {
-	vars := map[string]interface{}{
-		"id": id,
-	}
+	var product *Product
+	var environments []Environment
+	var after string
 
-	var result struct {
-		ProjectGroup struct {
-			ID             string    `json:"id"`
-			Name           string    `json:"name"`
-			Description    string    `json:"description"`
-			Enabled        bool      `json:"enabled"`
-			OrganizationID string    `json:"organizationId"`
-			UpdatedAt      time.Time `json:"updatedAt"`
-			SbomsCount     int       `json:"sbomsCount"`
-			Projects       []struct {
-				ID          string    `json:"id"`
-				Name        string    `json:"name"`
-				Description string    `json:"description"`
-				Enabled     bool      `json:"enabled"`
-				UpdatedAt   time.Time `json:"updatedAt"`
-				SbomsCount  int       `json:"sbomsCount"`
-			} `json:"projects"`
-		} `json:"projectGroup"`
-	}
+	for {
+		vars := map[string]interface{}{
+			"id":            id,
+			"projectsFirst": getProductEnvironmentsPageSize,
+		}
+		if after != "" {
+			vars["projectsAfter"] = after
+		}
 
-	if err := c.gql.Execute(ctx, graphql.ProjectGroupQuery, vars, &result); err != nil {
-		return nil, err
-	}
+		var result struct {
+			ProjectGroup struct {
+				ID             string    `json:"id"`
+				Name           string    `json:"name"`
+				Description    string    `json:"description"`
+				Enabled        bool      `json:"enabled"`
+				OrganizationID string    `json:"organizationId"`
+				UpdatedAt      time.Time `json:"updatedAt"`
+				SbomsCount     int       `json:"sbomsCount"`
+				Projects       struct {
+					Nodes []struct {
+						ID          string    `json:"id"`
+						Name        string    `json:"name"`
+						Description string    `json:"description"`
+						Enabled     bool      `json:"enabled"`
+						UpdatedAt   time.Time `json:"updatedAt"`
+						SbomsCount  int       `json:"sbomsCount"`
+					} `json:"nodes"`
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+				} `json:"projects"`
+			} `json:"projectGroup"`
+		}
 
-	environments := make([]Environment, len(result.ProjectGroup.Projects))
-	for i, p := range result.ProjectGroup.Projects {
-		environments[i] = Environment{
-			ID:            p.ID,
-			Name:          p.Name,
-			Description:   p.Description,
-			Enabled:       p.Enabled,
-			UpdatedAt:     p.UpdatedAt,
-			VersionsCount: p.SbomsCount,
-			ProductID:     result.ProjectGroup.ID,
+		if err := c.gql.Execute(ctx, graphql.ProjectGroupQuery, vars, &result); err != nil {
+			return nil, err
+		}
+
+		if product == nil {
+			product = &Product{
+				ID:             result.ProjectGroup.ID,
+				Name:           result.ProjectGroup.Name,
+				Description:    result.ProjectGroup.Description,
+				Enabled:        result.ProjectGroup.Enabled,
+				OrganizationID: result.ProjectGroup.OrganizationID,
+				UpdatedAt:      result.ProjectGroup.UpdatedAt,
+				VersionsCount:  result.ProjectGroup.SbomsCount,
+			}
+		}
+
+		for _, p := range result.ProjectGroup.Projects.Nodes {
+			environments = append(environments, Environment{
+				ID:            p.ID,
+				Name:          p.Name,
+				Description:   p.Description,
+				Enabled:       p.Enabled,
+				UpdatedAt:     p.UpdatedAt,
+				VersionsCount: p.SbomsCount,
+				ProductID:     result.ProjectGroup.ID,
+			})
+		}
+
+		if !result.ProjectGroup.Projects.PageInfo.HasNextPage {
+			break
+		}
+
+		after = result.ProjectGroup.Projects.PageInfo.EndCursor
+		if after == "" {
+			return nil, fmt.Errorf("project group projects pageInfo has next page without end cursor")
 		}
 	}
 
-	return &Product{
-		ID:             result.ProjectGroup.ID,
-		Name:           result.ProjectGroup.Name,
-		Description:    result.ProjectGroup.Description,
-		Enabled:        result.ProjectGroup.Enabled,
-		OrganizationID: result.ProjectGroup.OrganizationID,
-		UpdatedAt:      result.ProjectGroup.UpdatedAt,
-		VersionsCount:  result.ProjectGroup.SbomsCount,
-		Environments:   environments,
-	}, nil
+	product.Environments = environments
+	return product, nil
 }
 
 // GetEnvironment fetches a single environment by ID
