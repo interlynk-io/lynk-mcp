@@ -112,3 +112,71 @@ func TestGetProduct_PaginatesEnvironments(t *testing.T) {
 		t.Fatalf("second request projectsAfter = %#v, want cursor-1", gql.requests[1]["projectsAfter"])
 	}
 }
+
+func TestGetProduct_OrdersEnvironmentsWithVersionsFirst(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"projectGroup": {
+					"id": "product-1",
+					"name": "Product 1",
+					"description": "",
+					"enabled": true,
+					"organizationId": "org-1",
+					"updatedAt": "2026-04-16T23:00:09Z",
+					"sbomsCount": 8,
+					"projects": {
+						"nodes": [
+							{
+								"id": "env-development",
+								"name": "development",
+								"description": "development environment",
+								"enabled": true,
+								"updatedAt": "2026-04-16T23:00:09Z",
+								"sbomsCount": 0
+							},
+							{
+								"id": "env-production",
+								"name": "production",
+								"description": "production environment",
+								"enabled": true,
+								"updatedAt": "2026-04-16T23:00:09Z",
+								"sbomsCount": 0
+							},
+							{
+								"id": "env-default",
+								"name": "default",
+								"description": "default environment",
+								"enabled": true,
+								"updatedAt": "2026-04-16T23:00:09Z",
+								"sbomsCount": 8
+							}
+						],
+						"pageInfo": {
+							"hasNextPage": false,
+							"endCursor": ""
+						}
+					}
+				}
+			}`,
+		},
+	}
+
+	client := &Client{gql: gql}
+	product, err := client.GetProduct(context.Background(), "product-1")
+	if err != nil {
+		t.Fatalf("GetProduct returned error: %v", err)
+	}
+
+	got := []string{
+		product.Environments[0].ID,
+		product.Environments[1].ID,
+		product.Environments[2].ID,
+	}
+	want := []string{"env-default", "env-development", "env-production"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("environment order = %#v, want %#v", got, want)
+		}
+	}
+}
