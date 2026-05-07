@@ -17,6 +17,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/interlynk-io/lynk-mcp/internal/graphql"
@@ -202,6 +203,13 @@ func (c *Client) GetProduct(ctx context.Context, id string) (*Product, error) {
 			return nil, fmt.Errorf("project group projects pageInfo has next page without end cursor")
 		}
 	}
+
+	sort.SliceStable(environments, func(i, j int) bool {
+		if environments[i].VersionsCount != environments[j].VersionsCount {
+			return environments[i].VersionsCount > environments[j].VersionsCount
+		}
+		return environments[i].Name < environments[j].Name
+	})
 
 	product.Environments = environments
 	return product, nil
