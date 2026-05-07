@@ -239,6 +239,92 @@ const (
 		}
 	`
 
+	// ComponentUpdateMutation updates mutable component metadata for an SBOM component
+	ComponentUpdateMutation = `
+		mutation UpdateComponent($id: Uuid!, $sbomId: Uuid!, $kind: String, $name: String, $description: String, $copyright: String, $version: String, $group: String, $licenses: LicenseInput, $cpes: [String!], $purl: String, $primary: Boolean, $internal: Boolean, $generateUniqueId: Boolean, $scope: String, $supportLevel: ComponentSupportLevelEnum, $endOfSupport: DateOrEmptyString, $notice: String, $checksums: [ChecksumInput!], $externalUrls: [ExternalUrlInput!]) {
+			componentUpdate(
+				input: {id: $id, sbomId: $sbomId, kind: $kind, name: $name, copyright: $copyright, description: $description, version: $version, group: $group, licenses: $licenses, cpes: $cpes, purl: $purl, scope: $scope, primary: $primary, internal: $internal, generateUniqueId: $generateUniqueId, supportLevel: $supportLevel, endOfSupport: $endOfSupport, notice: $notice, checksums: $checksums, externalUrls: $externalUrls}
+			) {
+				component {
+					id
+					name
+					version
+					kind
+					purl
+					cpes
+					licensesExp
+					group
+					description
+					scope
+					copyright
+					primary
+					internal
+					uniqueId
+					sbomId
+					notice
+					supportLevel
+					endOfSupport
+					checksums {
+						alg
+						content
+					}
+					externalUrls {
+						name
+						url
+					}
+				}
+				errors
+			}
+		}
+	`
+
+	// ComponentSupplierUpdateMutation updates a component supplier
+	ComponentSupplierUpdateMutation = `
+		mutation UpdateComponentSupplier($id: Uuid!, $name: String, $url: String, $contactName: String, $contactEmail: String) {
+			compSupplierUpdate(
+				input: {id: $id, name: $name, url: $url, contactName: $contactName, contactEmail: $contactEmail}
+			) {
+				compSupplier {
+					id
+					name
+					url
+					contactName
+					contactEmail
+				}
+				errors
+			}
+		}
+	`
+
+	// ComponentVexUpdateMutation updates VEX data for a component vulnerability
+	ComponentVexUpdateMutation = `
+		mutation UpdateComponentVex($componentVulnId: Uuid!, $currentSbomId: Uuid!, $vexStatusId: Uuid, $vexJustificationId: Uuid, $cdxResponseId: Uuid, $note: String, $impact: String, $detail: String, $action: String, $fixedIn: String, $propagateVex: Boolean, $resolutionDate: ISO8601Date, $componentVulnCustomFieldAttributes: [ComponentVulnCustomFieldAttributesInput!]) {
+			componentVexUpdate(
+				input: {componentVulnId: $componentVulnId, currentSbomId: $currentSbomId, vexStatusId: $vexStatusId, vexJustificationId: $vexJustificationId, cdxResponseId: $cdxResponseId, note: $note, impact: $impact, detail: $detail, action: $action, fixedIn: $fixedIn, propagateVex: $propagateVex, resolutionDate: $resolutionDate, componentVulnCustomFieldAttributes: $componentVulnCustomFieldAttributes}
+			) {
+				componentVuln {
+					id
+					componentId
+					vulnId
+					sbomId
+					fixedIn
+					detail
+					impact
+					actionStmt
+					vexStatus {
+						id
+						name
+					}
+					vexJustification {
+						id
+						name
+					}
+				}
+				errors
+			}
+		}
+	`
+
 	// SbomVulnsQuery fetches vulnerabilities for an SBOM
 	SbomVulnsQuery = `
 		query GetSbomVulns($sbomId: Uuid!, $first: Int, $after: String, $severity: [String!], $status: [String!], $kev: Boolean, $search: String) {

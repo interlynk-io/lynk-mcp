@@ -472,6 +472,114 @@ func (s *Server) handleGetComponent(ctx context.Context, request mcp.CallToolReq
 	return formatResult(result)
 }
 
+func (s *Server) handleUpdateComponent(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for update_component"), nil
+	}
+
+	id, ok := args["id"].(string)
+	if !ok || id == "" {
+		return newToolResultError("Missing required parameter: id"), nil
+	}
+	versionID, ok := args["version_id"].(string)
+	if !ok || versionID == "" {
+		return newToolResultError("Missing required parameter: version_id"), nil
+	}
+	if !hasAnyParam(args, "kind", "name", "description", "copyright", "version", "group", "licenses", "licenses_exp", "cpes", "purl", "primary", "internal", "generate_unique_id", "scope", "support_level", "end_of_support", "notice", "checksums", "external_urls") {
+		return newToolResultError("No update fields provided"), nil
+	}
+
+	input := api.UpdateComponentInput{
+		ID:               id,
+		VersionID:        versionID,
+		Kind:             getStringPtrParam(args, "kind"),
+		Name:             getStringPtrParam(args, "name"),
+		Description:      getStringPtrParam(args, "description"),
+		Copyright:        getStringPtrParam(args, "copyright"),
+		Version:          getStringPtrParam(args, "version"),
+		Group:            getStringPtrParam(args, "group"),
+		Cpes:             getStringSlicePtrParam(args, "cpes"),
+		Purl:             getStringPtrParam(args, "purl"),
+		Primary:          getBoolPtrParam(args, "primary"),
+		Internal:         getBoolPtrParam(args, "internal"),
+		GenerateUniqueID: getBoolPtrParam(args, "generate_unique_id"),
+		Scope:            getStringPtrParam(args, "scope"),
+		SupportLevel:     getStringPtrParam(args, "support_level"),
+		EndOfSupport:     getStringPtrParam(args, "end_of_support"),
+		Notice:           getStringPtrParam(args, "notice"),
+	}
+
+	licenses, err := getLicenseInputParam(args)
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+	input.Licenses = licenses
+	checksums, err := getChecksumInputsParam(args, "checksums")
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+	input.Checksums = checksums
+	externalURLs, err := getExternalURLInputsParam(args, "external_urls")
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+	input.ExternalURLs = externalURLs
+
+	result, err := s.client.UpdateComponent(ctx, input)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to update component: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to update component: %s", strings.Join(result.Errors, "; "))), nil
+	}
+	if result.Component == nil {
+		return newToolResultError("Failed to update component: API returned no component"), nil
+	}
+
+	return formatResult(formatComponent(result.Component))
+}
+
+func (s *Server) handleUpdateComponentSupplier(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for update_component_supplier"), nil
+	}
+
+	id, ok := args["id"].(string)
+	if !ok || id == "" {
+		return newToolResultError("Missing required parameter: id"), nil
+	}
+	if !hasAnyParam(args, "name", "url", "contact_name", "contact_email") {
+		return newToolResultError("No update fields provided"), nil
+	}
+
+	result, err := s.client.UpdateComponentSupplier(ctx, api.UpdateComponentSupplierInput{
+		ID:           id,
+		Name:         getStringPtrParam(args, "name"),
+		URL:          getStringPtrParam(args, "url"),
+		ContactName:  getStringPtrParam(args, "contact_name"),
+		ContactEmail: getStringPtrParam(args, "contact_email"),
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to update component supplier: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to update component supplier: %s", strings.Join(result.Errors, "; "))), nil
+	}
+	if result.Supplier == nil {
+		return newToolResultError("Failed to update component supplier: API returned no supplier"), nil
+	}
+
+	return formatResult(map[string]interface{}{
+		"id":           result.Supplier.ID,
+		"name":         result.Supplier.Name,
+		"url":          result.Supplier.URL,
+		"contactName":  result.Supplier.ContactName,
+		"contactEmail": result.Supplier.ContactEmail,
+	})
+}
+
 func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	versionID, ok := args["version_id"].(string)
@@ -592,6 +700,57 @@ func (s *Server) handleGetVulnerability(ctx context.Context, request mcp.CallToo
 	}
 
 	return formatResult(result)
+}
+
+func (s *Server) handleUpdateComponentVex(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for update_component_vex"), nil
+	}
+
+	componentVulnID, ok := args["component_vuln_id"].(string)
+	if !ok || componentVulnID == "" {
+		return newToolResultError("Missing required parameter: component_vuln_id"), nil
+	}
+	currentVersionID, ok := args["current_version_id"].(string)
+	if !ok || currentVersionID == "" {
+		return newToolResultError("Missing required parameter: current_version_id"), nil
+	}
+	if !hasAnyParam(args, "vex_status_id", "vex_justification_id", "cdx_response_id", "note", "impact", "detail", "action", "fixed_in", "propagate_vex", "resolution_date", "component_vuln_custom_field_attributes") {
+		return newToolResultError("No update fields provided"), nil
+	}
+
+	customFields, err := getComponentVulnCustomFieldInputsParam(args, "component_vuln_custom_field_attributes")
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+
+	result, err := s.client.UpdateComponentVex(ctx, api.UpdateComponentVexInput{
+		ComponentVulnID:                    componentVulnID,
+		CurrentVersionID:                   currentVersionID,
+		VexStatusID:                        getStringPtrParam(args, "vex_status_id"),
+		VexJustificationID:                 getStringPtrParam(args, "vex_justification_id"),
+		CDXResponseID:                      getStringPtrParam(args, "cdx_response_id"),
+		Note:                               getStringPtrParam(args, "note"),
+		Impact:                             getStringPtrParam(args, "impact"),
+		Detail:                             getStringPtrParam(args, "detail"),
+		Action:                             getStringPtrParam(args, "action"),
+		FixedIn:                            getStringPtrParam(args, "fixed_in"),
+		PropagateVex:                       getBoolPtrParam(args, "propagate_vex"),
+		ResolutionDate:                     getStringPtrParam(args, "resolution_date"),
+		ComponentVulnCustomFieldAttributes: customFields,
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to update component VEX: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to update component VEX: %s", strings.Join(result.Errors, "; "))), nil
+	}
+	if result.ComponentVuln == nil {
+		return newToolResultError("Failed to update component VEX: API returned no component vulnerability"), nil
+	}
+
+	return formatResult(formatComponentVuln(result.ComponentVuln))
 }
 
 func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -871,6 +1030,225 @@ func getStringSliceParam(args map[string]interface{}, key string) []string {
 		}
 	}
 	return nil
+}
+
+func confirmed(args map[string]interface{}) bool {
+	confirm, ok := args["confirm"].(bool)
+	return ok && confirm
+}
+
+func hasAnyParam(args map[string]interface{}, keys ...string) bool {
+	for _, key := range keys {
+		if _, ok := args[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func getStringPtrParam(args map[string]interface{}, key string) *string {
+	val, ok := args[key]
+	if !ok {
+		return nil
+	}
+	str, ok := val.(string)
+	if !ok {
+		return nil
+	}
+	return &str
+}
+
+func getBoolPtrParam(args map[string]interface{}, key string) *bool {
+	val, ok := args[key]
+	if !ok {
+		return nil
+	}
+	boolean, ok := val.(bool)
+	if !ok {
+		return nil
+	}
+	return &boolean
+}
+
+func getStringSlicePtrParam(args map[string]interface{}, key string) *[]string {
+	if _, ok := args[key]; !ok {
+		return nil
+	}
+	values := getStringSliceParam(args, key)
+	return &values
+}
+
+func getLicenseInputParam(args map[string]interface{}) (*api.LicenseInput, error) {
+	if val, ok := args["licenses"]; ok {
+		obj, ok := val.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("licenses must be an object")
+		}
+		licensesExp, _ := obj["licensesExp"].(string)
+		if licensesExp == "" {
+			licensesExp, _ = obj["licenses_exp"].(string)
+		}
+		return &api.LicenseInput{LicensesExp: licensesExp}, nil
+	}
+	if licensesExp := getStringPtrParam(args, "licenses_exp"); licensesExp != nil {
+		return &api.LicenseInput{LicensesExp: *licensesExp}, nil
+	}
+	return nil, nil
+}
+
+func getChecksumInputsParam(args map[string]interface{}, key string) (*[]api.ChecksumInput, error) {
+	val, ok := args[key]
+	if !ok {
+		return nil, nil
+	}
+	items, ok := val.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("%s must be an array", key)
+	}
+	result := make([]api.ChecksumInput, 0, len(items))
+	for i, item := range items {
+		obj, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("%s[%d] must be an object", key, i)
+		}
+		alg, _ := obj["alg"].(string)
+		content, _ := obj["content"].(string)
+		if alg == "" || content == "" {
+			return nil, fmt.Errorf("%s[%d] requires alg and content", key, i)
+		}
+		result = append(result, api.ChecksumInput{Alg: alg, Content: content})
+	}
+	return &result, nil
+}
+
+func getExternalURLInputsParam(args map[string]interface{}, key string) (*[]api.ExternalURLInput, error) {
+	val, ok := args[key]
+	if !ok {
+		return nil, nil
+	}
+	items, ok := val.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("%s must be an array", key)
+	}
+	result := make([]api.ExternalURLInput, 0, len(items))
+	for i, item := range items {
+		obj, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("%s[%d] must be an object", key, i)
+		}
+		name, _ := obj["name"].(string)
+		url, _ := obj["url"].(string)
+		if name == "" && url == "" {
+			return nil, fmt.Errorf("%s[%d] requires name or url", key, i)
+		}
+		result = append(result, api.ExternalURLInput{Name: name, URL: url})
+	}
+	return &result, nil
+}
+
+func getComponentVulnCustomFieldInputsParam(args map[string]interface{}, key string) (*[]api.ComponentVulnCustomFieldAttributeInput, error) {
+	val, ok := args[key]
+	if !ok {
+		return nil, nil
+	}
+	items, ok := val.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("%s must be an array", key)
+	}
+	result := make([]api.ComponentVulnCustomFieldAttributeInput, 0, len(items))
+	for i, item := range items {
+		obj, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("%s[%d] must be an object", key, i)
+		}
+		input := api.ComponentVulnCustomFieldAttributeInput{}
+		input.ID, _ = obj["id"].(string)
+		input.ComponentVulnCustomFieldDefinitionID, _ = obj["componentVulnCustomFieldDefinitionId"].(string)
+		if input.ComponentVulnCustomFieldDefinitionID == "" {
+			input.ComponentVulnCustomFieldDefinitionID, _ = obj["component_vuln_custom_field_definition_id"].(string)
+		}
+		input.Value, _ = obj["value"].(string)
+		if destroy, ok := obj["_destroy"].(bool); ok {
+			input.Destroy = &destroy
+		} else if destroy, ok := obj["destroy"].(bool); ok {
+			input.Destroy = &destroy
+		}
+		result = append(result, input)
+	}
+	return &result, nil
+}
+
+func formatComponent(component *api.VersionComponent) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":           component.ID,
+		"name":         component.Name,
+		"version":      component.Version,
+		"kind":         component.Kind,
+		"purl":         component.Purl,
+		"cpes":         component.Cpes,
+		"licensesExp":  component.LicensesExp,
+		"group":        component.Group,
+		"description":  component.Description,
+		"scope":        component.Scope,
+		"copyright":    component.Copyright,
+		"primary":      component.Primary,
+		"internal":     component.Internal,
+		"uniqueId":     component.UniqueID,
+		"versionId":    component.VersionID,
+		"notice":       component.Notice,
+		"supportLevel": component.SupportLevel,
+		"endOfSupport": component.EndOfSupport,
+	}
+	if !component.UpdatedAt.IsZero() {
+		result["updatedAt"] = component.UpdatedAt
+	}
+	if component.Checksums != nil {
+		checksums := make([]map[string]interface{}, len(component.Checksums))
+		for i, checksum := range component.Checksums {
+			checksums[i] = map[string]interface{}{
+				"alg":     checksum.Alg,
+				"content": checksum.Content,
+			}
+		}
+		result["checksums"] = checksums
+	}
+	if component.ExternalURLs != nil {
+		externalURLs := make([]map[string]interface{}, len(component.ExternalURLs))
+		for i, externalURL := range component.ExternalURLs {
+			externalURLs[i] = map[string]interface{}{
+				"name": externalURL.Name,
+				"url":  externalURL.URL,
+			}
+		}
+		result["externalUrls"] = externalURLs
+	}
+	return result
+}
+
+func formatComponentVuln(componentVuln *api.ComponentVuln) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":          componentVuln.ID,
+		"componentId": componentVuln.ComponentID,
+		"vulnId":      componentVuln.VulnID,
+		"versionId":   componentVuln.VersionID,
+		"fixedIn":     componentVuln.FixedIn,
+		"detail":      componentVuln.Detail,
+		"impact":      componentVuln.Impact,
+		"actionStmt":  componentVuln.ActionStmt,
+	}
+	if componentVuln.VexStatus != nil {
+		result["vexStatus"] = map[string]interface{}{
+			"id":   componentVuln.VexStatus.ID,
+			"name": componentVuln.VexStatus.Name,
+		}
+	}
+	if componentVuln.VexJustification != nil {
+		result["vexJustification"] = map[string]interface{}{
+			"id":   componentVuln.VexJustification.ID,
+			"name": componentVuln.VexJustification.Name,
+		}
+	}
+	return result
 }
 
 func formatDoctorResults(versionID string, result *api.DoctorResultsResult) map[string]interface{} {
