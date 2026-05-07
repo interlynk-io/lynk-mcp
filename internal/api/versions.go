@@ -57,8 +57,16 @@ type VersionComponent struct {
 	LicensesExp  string
 	Group        string
 	Description  string
+	Scope        string
+	Copyright    string
 	Primary      bool
 	Internal     bool
+	UniqueID     string
+	Notice       string
+	SupportLevel string
+	EndOfSupport string
+	Checksums    []ComponentChecksum
+	ExternalURLs []ComponentExternalURL
 	VersionID    string
 	UpdatedAt    time.Time
 	VersionInfo  *Version

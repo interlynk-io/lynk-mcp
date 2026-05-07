@@ -137,6 +137,57 @@ func (s *Server) registerTools() {
 		mcp.WithString("version_id", mcp.Required(), mcp.Description("The UUID of the version containing the component")),
 	), s.handleGetComponent)
 
+	s.mcp.AddTool(mcp.NewTool("update_component",
+		mcp.WithDescription("Destructively update component metadata. Requires confirm=true. Fetch the component first and only pass fields that should change."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the component to update")),
+		mcp.WithString("version_id", mcp.Required(), mcp.Description("The UUID of the version/SBOM containing the component")),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to perform this destructive update")),
+		mcp.WithString("kind", mcp.Description("Component kind")),
+		mcp.WithString("name", mcp.Description("Component name")),
+		mcp.WithString("description", mcp.Description("Component description")),
+		mcp.WithString("copyright", mcp.Description("Component copyright")),
+		mcp.WithString("version", mcp.Description("Component version")),
+		mcp.WithString("group", mcp.Description("Component group")),
+		mcp.WithObject("licenses", mcp.Description("License input object"), mcp.Properties(map[string]interface{}{
+			"licensesExp": map[string]interface{}{"type": "string", "description": "SPDX license expression"},
+		})),
+		mcp.WithString("licenses_exp", mcp.Description("Convenience SPDX license expression; ignored if licenses is provided")),
+		mcp.WithArray("cpes", mcp.Description("Component CPEs"), mcp.WithStringItems()),
+		mcp.WithString("purl", mcp.Description("Component package URL")),
+		mcp.WithBoolean("primary", mcp.Description("Whether this is the primary component")),
+		mcp.WithBoolean("internal", mcp.Description("Whether this component is internal")),
+		mcp.WithBoolean("generate_unique_id", mcp.Description("Generate a new component unique ID")),
+		mcp.WithString("scope", mcp.Description("Component scope")),
+		mcp.WithString("support_level", mcp.Description("Component support level enum: UNSPECIFIED, ACTIVELY_MAINTAINED, NO_LONGER_MAINTAINED, ABANDONED, NONE")),
+		mcp.WithString("end_of_support", mcp.Description("End-of-support date or empty string")),
+		mcp.WithString("notice", mcp.Description("Component notice")),
+		mcp.WithArray("checksums", mcp.Description("Checksum objects with alg and content"), mcp.Items(map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"alg":     map[string]interface{}{"type": "string"},
+				"content": map[string]interface{}{"type": "string"},
+			},
+			"required": []string{"alg", "content"},
+		})),
+		mcp.WithArray("external_urls", mcp.Description("External URL objects with name and url"), mcp.Items(map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{"type": "string"},
+				"url":  map[string]interface{}{"type": "string"},
+			},
+		})),
+	), s.handleUpdateComponent)
+
+	s.mcp.AddTool(mcp.NewTool("update_component_supplier",
+		mcp.WithDescription("Destructively update a component supplier. Requires confirm=true. Only pass fields that should change."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the component supplier to update")),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to perform this destructive update")),
+		mcp.WithString("name", mcp.Description("Supplier name")),
+		mcp.WithString("url", mcp.Description("Supplier URL")),
+		mcp.WithString("contact_name", mcp.Description("Supplier contact name")),
+		mcp.WithString("contact_email", mcp.Description("Supplier contact email")),
+	), s.handleUpdateComponentSupplier)
+
 	// Vulnerability tools
 	s.mcp.AddTool(mcp.NewTool("list_vulnerabilities",
 		mcp.WithDescription("List vulnerabilities in a version with optional filters"),
@@ -152,6 +203,32 @@ func (s *Server) registerTools() {
 		mcp.WithDescription("Get details of a specific vulnerability"),
 		mcp.WithString("vuln_id", mcp.Required(), mcp.Description("The CVE ID (e.g., CVE-2021-44228) or UUID")),
 	), s.handleGetVulnerability)
+
+	s.mcp.AddTool(mcp.NewTool("update_component_vex",
+		mcp.WithDescription("Destructively update VEX data for a component vulnerability. Requires confirm=true. Only pass fields that should change."),
+		mcp.WithString("component_vuln_id", mcp.Required(), mcp.Description("The UUID of the component vulnerability to update")),
+		mcp.WithString("current_version_id", mcp.Required(), mcp.Description("The UUID of the current version/SBOM context")),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to perform this destructive update")),
+		mcp.WithString("vex_status_id", mcp.Description("VEX status UUID")),
+		mcp.WithString("vex_justification_id", mcp.Description("VEX justification UUID")),
+		mcp.WithString("cdx_response_id", mcp.Description("CycloneDX response UUID")),
+		mcp.WithString("note", mcp.Description("VEX note")),
+		mcp.WithString("impact", mcp.Description("Impact statement")),
+		mcp.WithString("detail", mcp.Description("Detail statement")),
+		mcp.WithString("action", mcp.Description("Action statement")),
+		mcp.WithString("fixed_in", mcp.Description("Fixed-in value")),
+		mcp.WithBoolean("propagate_vex", mcp.Description("Propagate VEX to upstream")),
+		mcp.WithString("resolution_date", mcp.Description("Resolution date in YYYY-MM-DD format")),
+		mcp.WithArray("component_vuln_custom_field_attributes", mcp.Description("Custom field attribute objects"), mcp.Items(map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"id":                                   map[string]interface{}{"type": "string"},
+				"componentVulnCustomFieldDefinitionId": map[string]interface{}{"type": "string"},
+				"value":                                map[string]interface{}{"type": "string"},
+				"_destroy":                             map[string]interface{}{"type": "boolean"},
+			},
+		})),
+	), s.handleUpdateComponentVex)
 
 	s.mcp.AddTool(mcp.NewTool("search_vulnerabilities",
 		mcp.WithDescription("Search vulnerabilities across all products"),
