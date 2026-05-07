@@ -135,7 +135,7 @@ lynk-mcp configure
 
 This prompts for:
 1. API Endpoint (defaults to https://api.interlynk.io/lynkapi)
-2. API Token (your Lynk API key: `lynk_live_*`, `lynk_staging_*`, or `lynk_test_*`)
+2. API Token (your Lynk API key: `lynk_live_*`, `lynk_staging_*`, `lynk_test_*`, or `lynk_service_test_*`)
 
 The token is stored securely in your system keychain.
 
