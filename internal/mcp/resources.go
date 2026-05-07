@@ -201,6 +201,34 @@ func (s *Server) handleVersionVulnerabilitiesResource(ctx context.Context, reque
 	}, nil
 }
 
+func (s *Server) handleVersionDoctorResultsResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	versionID := extractPathParam(request.Params.URI, "version_id")
+	if versionID == "" {
+		return nil, fmt.Errorf("missing version_id in URI")
+	}
+
+	result, err := s.client.ListDoctorResults(ctx, api.ListDoctorResultsInput{
+		VersionID: versionID,
+		First:     25,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list Doctor results: %w", err)
+	}
+
+	jsonData, err := json.MarshalIndent(formatDoctorResults(versionID, result), "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal Doctor results: %w", err)
+	}
+
+	return []mcp.ResourceContents{
+		mcp.TextResourceContents{
+			URI:      request.Params.URI,
+			MIMEType: "application/json",
+			Text:     string(jsonData),
+		},
+	}, nil
+}
+
 func (s *Server) handleEnvironmentLatestVersionResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 	environmentID := extractPathParam(request.Params.URI, "environment_id")
 	if environmentID == "" {

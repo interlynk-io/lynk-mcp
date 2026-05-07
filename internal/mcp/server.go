@@ -99,6 +99,22 @@ func (s *Server) registerTools() {
 		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the version")),
 	), s.handleGetVersion)
 
+	s.mcp.AddTool(mcp.NewTool("list_doctor_results",
+		mcp.WithDescription("List SBOM Doctor findings for a version"),
+		mcp.WithString("version_id", mcp.Required(), mcp.Description("The UUID of the version")),
+		mcp.WithString("search", mcp.Description("Case-insensitive substring search on component name")),
+		mcp.WithString("component_id", mcp.Description("Filter to a single component UUID")),
+		mcp.WithArray("severity", mcp.Description("Filter by Doctor severity"), mcp.WithStringItems()),
+		mcp.WithArray("domain", mcp.Description("Filter by Doctor domain"), mcp.WithStringItems()),
+		mcp.WithArray("check_code", mcp.Description("Filter by Doctor check code"), mcp.WithStringItems()),
+		mcp.WithArray("component_name", mcp.Description("Filter by exact component name"), mcp.WithStringItems()),
+		mcp.WithBoolean("force_refresh", mcp.Description("Bypass Doctor cache")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 25, max: 25)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page")),
+		mcp.WithNumber("last", mcp.Description("Maximum number of previous-page results to return (max: 25)")),
+		mcp.WithString("before", mcp.Description("Cursor for the previous page")),
+	), s.handleListDoctorResults)
+
 	s.mcp.AddTool(mcp.NewTool("compare_versions",
 		mcp.WithDescription("Compare two versions and show the differences (drift analysis)"),
 		mcp.WithString("source_version_id", mcp.Required(), mcp.Description("The UUID of the source version")),
@@ -202,6 +218,15 @@ func (s *Server) registerResources() {
 			mcp.WithTemplateMIMEType("application/json"),
 		),
 		s.handleVersionVulnerabilitiesResource,
+	)
+
+	s.mcp.AddResourceTemplate(
+		mcp.NewResourceTemplate(
+			"version:///{version_id}/doctor-results",
+			"SBOM Doctor findings for a version",
+			mcp.WithTemplateMIMEType("application/json"),
+		),
+		s.handleVersionDoctorResultsResource,
 	)
 
 	s.mcp.AddResourceTemplate(

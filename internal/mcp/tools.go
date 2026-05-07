@@ -283,6 +283,50 @@ func (s *Server) handleGetVersion(ctx context.Context, request mcp.CallToolReque
 	return formatResult(result)
 }
 
+func (s *Server) handleListDoctorResults(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	versionID, ok := args["version_id"].(string)
+	if !ok || versionID == "" {
+		return newToolResultError("Missing required parameter: version_id"), nil
+	}
+
+	input := api.ListDoctorResultsInput{
+		VersionID:     versionID,
+		Severity:      getStringSliceParam(args, "severity"),
+		Domain:        getStringSliceParam(args, "domain"),
+		CheckCode:     getStringSliceParam(args, "check_code"),
+		ComponentName: getStringSliceParam(args, "component_name"),
+	}
+	if limit := getIntParam(args, "limit", 0); limit > 0 {
+		input.First = limit
+	}
+	if last := getIntParam(args, "last", 0); last > 0 {
+		input.Last = last
+	}
+	if search, ok := args["search"].(string); ok {
+		input.Search = search
+	}
+	if componentID, ok := args["component_id"].(string); ok {
+		input.ComponentID = componentID
+	}
+	if forceRefresh, ok := args["force_refresh"].(bool); ok {
+		input.ForceRefresh = &forceRefresh
+	}
+	if after, ok := args["after"].(string); ok {
+		input.After = after
+	}
+	if before, ok := args["before"].(string); ok {
+		input.Before = before
+	}
+
+	result, err := s.client.ListDoctorResults(ctx, input)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to list Doctor results: %v", err)), nil
+	}
+
+	return formatResult(formatDoctorResults(versionID, result))
+}
+
 func (s *Server) handleCompareVersions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	sourceVersionID, ok := args["source_version_id"].(string)
@@ -803,4 +847,58 @@ func getIntParam(args map[string]interface{}, key string, defaultVal int) int {
 		}
 	}
 	return defaultVal
+}
+
+func getStringSliceParam(args map[string]interface{}, key string) []string {
+	val, ok := args[key]
+	if !ok {
+		return nil
+	}
+	switch v := val.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		result := make([]string, 0, len(v))
+		for _, item := range v {
+			if str, ok := item.(string); ok && str != "" {
+				result = append(result, str)
+			}
+		}
+		return result
+	case string:
+		if v != "" {
+			return []string{v}
+		}
+	}
+	return nil
+}
+
+func formatDoctorResults(versionID string, result *api.DoctorResultsResult) map[string]interface{} {
+	findings := make([]map[string]interface{}, len(result.Findings))
+	for i, f := range result.Findings {
+		findings[i] = map[string]interface{}{
+			"checkCode":        f.CheckCode,
+			"checkName":        f.CheckName,
+			"severity":         f.Severity,
+			"domain":           f.Domain,
+			"componentId":      f.ComponentID,
+			"componentName":    f.ComponentName,
+			"componentVersion": f.ComponentVersion,
+			"autoFixable":      f.AutoFixable,
+			"findings":         f.Findings,
+		}
+	}
+
+	return map[string]interface{}{
+		"versionId":  versionID,
+		"findings":   findings,
+		"totalCount": result.TotalCount,
+		"hasMore":    result.PageInfo.HasNextPage,
+		"pageInfo": map[string]interface{}{
+			"endCursor":       result.PageInfo.EndCursor,
+			"hasNextPage":     result.PageInfo.HasNextPage,
+			"hasPreviousPage": result.PageInfo.HasPreviousPage,
+			"startCursor":     result.PageInfo.StartCursor,
+		},
+	}
 }

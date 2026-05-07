@@ -473,6 +473,45 @@ const (
 		}
 	`
 
+	// DoctorResultsQuery fetches SBOM Doctor findings for a version
+	DoctorResultsQuery = `
+		query GetDoctorResults($sbomId: Uuid!, $search: String, $componentId: Uuid, $severity: [DoctorSeverityEnum!], $domain: [DoctorDomainEnum!], $checkCode: [String!], $componentName: [String!], $forceRefresh: Boolean, $first: Int, $last: Int, $after: String, $before: String) {
+			doctorResults(
+				sbomId: $sbomId
+				search: $search
+				componentId: $componentId
+				severity: $severity
+				domain: $domain
+				checkCode: $checkCode
+				componentName: $componentName
+				forceRefresh: $forceRefresh
+				first: $first
+				last: $last
+				after: $after
+				before: $before
+			) {
+				totalCount
+				pageInfo {
+					endCursor
+					hasNextPage
+					hasPreviousPage
+					startCursor
+				}
+				nodes {
+					checkCode
+					checkName
+					severity
+					domain
+					componentId
+					componentName
+					componentVersion
+					autoFixable
+					findings
+				}
+			}
+		}
+	`
+
 	// LicensesQuery fetches licenses with pagination
 	LicensesQuery = `
 		query GetLicenses($first: Int, $after: String, $status: [String!], $search: String) {
