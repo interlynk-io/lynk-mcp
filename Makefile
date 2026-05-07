@@ -50,6 +50,7 @@ BUILD_DIR = ./build
 BINARY_NAME = lynk-mcp
 TARGETOS ?= $(shell go env GOOS)
 TARGETARCH ?= $(shell go env GOARCH)
+LOCAL_CGO_ENABLED ?= $(shell go env CGO_ENABLED)
 
 ##@ General
 
@@ -102,17 +103,17 @@ test: generate ## Run all tests
 build: ## Build binary for current platform
 	@echo "Building $(BINARY_NAME) for $(TARGETOS)/$(TARGETARCH)..."
 	@mkdir -p $(BUILD_DIR)
-	@CGO_ENABLED=0 GOOS=$(TARGETOS) GOARCH=$(TARGETARCH) go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/lynk-mcp
+	@CGO_ENABLED=$(LOCAL_CGO_ENABLED) GOOS=$(TARGETOS) GOARCH=$(TARGETARCH) go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/lynk-mcp
 
 .PHONY: build-all
 build-all: ## Build binaries for all platforms
 	@echo "Building for all platforms..."
 	@mkdir -p $(BUILD_DIR)
-	@GOOS=linux GOARCH=amd64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/lynk-mcp
-	@GOOS=linux GOARCH=arm64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/lynk-mcp
-	@GOOS=darwin GOARCH=amd64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/lynk-mcp
-	@GOOS=darwin GOARCH=arm64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/lynk-mcp
-	@GOOS=windows GOARCH=amd64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/lynk-mcp
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/lynk-mcp
+	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/lynk-mcp
+	@CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/lynk-mcp
+	@CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/lynk-mcp
+	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -mod=readonly -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/lynk-mcp
 	@echo "Build complete. Binaries in $(BUILD_DIR)/"
 
 .PHONY: install
