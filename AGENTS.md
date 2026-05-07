@@ -34,4 +34,4 @@ Recent commit history uses short, imperative summaries with optional PR numbers,
 
 ## Security & Configuration Tips
 
-Do not commit API tokens or local config. Runtime config is stored in `~/.lynk-mcp/config.yaml`, and tokens should come from the system keychain or `LYNK_API_TOKEN`. Use `lynk_test_*` or staging tokens for development.
+Do not commit API tokens or local config. Runtime config is stored in `~/.lynk-mcp/config.yaml`, and tokens should come from the system keychain or `LYNK_API_TOKEN`. Use `lynk_test_*`, `lynk_service_test_*`, or staging tokens for development.

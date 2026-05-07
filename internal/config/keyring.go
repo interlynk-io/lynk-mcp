@@ -27,15 +27,21 @@ const (
 	tokenKey    = "api-token"
 )
 
+var validTokenPrefixes = []string{
+	"lynk_live_",
+	"lynk_staging_",
+	"lynk_test_",
+	"lynk_service_test_",
+}
+
+// ValidTokenPrefixesDescription returns the accepted token prefixes for errors/help text.
+func ValidTokenPrefixesDescription() string {
+	return strings.Join(validTokenPrefixes, ", ")
+}
+
 // ValidateTokenFormat checks if the token has a valid format
 func ValidateTokenFormat(token string) bool {
-	validPrefixes := []string{
-		"lynk_live_",
-		"lynk_staging_",
-		"lynk_test_",
-	}
-
-	for _, prefix := range validPrefixes {
+	for _, prefix := range validTokenPrefixes {
 		if strings.HasPrefix(token, prefix) {
 			return true
 		}
@@ -72,7 +78,7 @@ func GetToken() (string, error) {
 	// Check environment variable first (useful for Docker/CI environments)
 	if token := os.Getenv(EnvTokenKey); token != "" {
 		if !ValidateTokenFormat(token) {
-			return "", fmt.Errorf("invalid token format in %s: must start with lynk_live_, lynk_staging_, or lynk_test_", EnvTokenKey)
+			return "", fmt.Errorf("invalid token format in %s: must start with one of: %s", EnvTokenKey, ValidTokenPrefixesDescription())
 		}
 		return token, nil
 	}

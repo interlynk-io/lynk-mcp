@@ -99,7 +99,7 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 
 	// Validate token format
 	if !config.ValidateTokenFormat(token) {
-		return fmt.Errorf("invalid token format: must start with lynk_live_, lynk_staging_, or lynk_test_")
+		return fmt.Errorf("invalid token format: must start with one of: %s", config.ValidTokenPrefixesDescription())
 	}
 
 	// Store token in keyring
