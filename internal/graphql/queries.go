@@ -66,7 +66,7 @@ const (
 
 	// ProjectGroupQuery fetches a single project group by ID
 	ProjectGroupQuery = `
-		query GetProjectGroup($id: Uuid!) {
+		query GetProjectGroup($id: Uuid!, $projectsFirst: Int, $projectsAfter: String) {
 			projectGroup(id: $id) {
 				id
 				name
@@ -75,13 +75,19 @@ const (
 				organizationId
 				updatedAt
 				sbomsCount
-				projects {
-					id
-					name
-					description
-					enabled
-					updatedAt
-					sbomsCount
+				projects(first: $projectsFirst, after: $projectsAfter) {
+					nodes {
+						id
+						name
+						description
+						enabled
+						updatedAt
+						sbomsCount
+					}
+					pageInfo {
+						hasNextPage
+						endCursor
+					}
 				}
 			}
 		}
