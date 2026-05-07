@@ -55,10 +55,11 @@ func (s *Server) handleGetOrganization(ctx context.Context, request mcp.CallTool
 }
 
 func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
 	input := api.ListProductsInput{
-		First: getIntParam(request.Params.Arguments, "limit", 20),
+		First: getIntParam(args, "limit", 20),
 	}
-	if search, ok := request.Params.Arguments["search"].(string); ok {
+	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
 
@@ -87,7 +88,8 @@ func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolReq
 }
 
 func (s *Server) handleGetProduct(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	id, ok := request.Params.Arguments["id"].(string)
+	args := toolArguments(request)
+	id, ok := args["id"].(string)
 	if !ok || id == "" {
 		return newToolResultError("Missing required parameter: id"), nil
 	}
@@ -121,7 +123,8 @@ func (s *Server) handleGetProduct(ctx context.Context, request mcp.CallToolReque
 }
 
 func (s *Server) handleListEnvironments(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	productID, ok := request.Params.Arguments["product_id"].(string)
+	args := toolArguments(request)
+	productID, ok := args["product_id"].(string)
 	if !ok || productID == "" {
 		return newToolResultError("Missing required parameter: product_id"), nil
 	}
@@ -131,7 +134,7 @@ func (s *Server) handleListEnvironments(ctx context.Context, request mcp.CallToo
 		return newToolResultError(fmt.Sprintf("Failed to list environments: %v", err)), nil
 	}
 
-	search, _ := request.Params.Arguments["search"].(string)
+	search, _ := args["search"].(string)
 
 	environments := make([]map[string]interface{}, 0)
 	for _, e := range product.Environments {
@@ -155,7 +158,8 @@ func (s *Server) handleListEnvironments(ctx context.Context, request mcp.CallToo
 }
 
 func (s *Server) handleGetEnvironment(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	id, ok := request.Params.Arguments["id"].(string)
+	args := toolArguments(request)
+	id, ok := args["id"].(string)
 	if !ok || id == "" {
 		return newToolResultError("Missing required parameter: id"), nil
 	}
@@ -186,16 +190,17 @@ func (s *Server) handleGetEnvironment(ctx context.Context, request mcp.CallToolR
 }
 
 func (s *Server) handleListVersions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	environmentID, ok := request.Params.Arguments["environment_id"].(string)
+	args := toolArguments(request)
+	environmentID, ok := args["environment_id"].(string)
 	if !ok || environmentID == "" {
 		return newToolResultError("Missing required parameter: environment_id"), nil
 	}
 
 	input := api.ListVersionsInput{
 		EnvironmentID: environmentID,
-		First:         getIntParam(request.Params.Arguments, "limit", 20),
+		First:         getIntParam(args, "limit", 20),
 	}
-	if lifecycle, ok := request.Params.Arguments["lifecycle"].(string); ok && lifecycle != "" {
+	if lifecycle, ok := args["lifecycle"].(string); ok && lifecycle != "" {
 		input.Lifecycle = []string{lifecycle}
 	}
 
@@ -207,14 +212,14 @@ func (s *Server) handleListVersions(ctx context.Context, request mcp.CallToolReq
 	versions := make([]map[string]interface{}, len(result.Versions))
 	for i, v := range result.Versions {
 		versionData := map[string]interface{}{
-			"id":        v.ID,
-			"version":   v.Version,
-			"spec":      v.Spec,
+			"id":          v.ID,
+			"version":     v.Version,
+			"spec":        v.Spec,
 			"specVersion": v.SpecVersion,
-			"format":    v.Format,
-			"lifecycle": v.Lifecycle,
-			"createdAt": v.CreatedAt,
-			"updatedAt": v.UpdatedAt,
+			"format":      v.Format,
+			"lifecycle":   v.Lifecycle,
+			"createdAt":   v.CreatedAt,
+			"updatedAt":   v.UpdatedAt,
 		}
 		if v.Stats != nil {
 			versionData["stats"] = map[string]interface{}{
@@ -233,7 +238,8 @@ func (s *Server) handleListVersions(ctx context.Context, request mcp.CallToolReq
 }
 
 func (s *Server) handleGetVersion(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	id, ok := request.Params.Arguments["id"].(string)
+	args := toolArguments(request)
+	id, ok := args["id"].(string)
 	if !ok || id == "" {
 		return newToolResultError("Missing required parameter: id"), nil
 	}
@@ -278,11 +284,12 @@ func (s *Server) handleGetVersion(ctx context.Context, request mcp.CallToolReque
 }
 
 func (s *Server) handleCompareVersions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	sourceVersionID, ok := request.Params.Arguments["source_version_id"].(string)
+	args := toolArguments(request)
+	sourceVersionID, ok := args["source_version_id"].(string)
 	if !ok || sourceVersionID == "" {
 		return newToolResultError("Missing required parameter: source_version_id"), nil
 	}
-	targetVersionID, ok := request.Params.Arguments["target_version_id"].(string)
+	targetVersionID, ok := args["target_version_id"].(string)
 	if !ok || targetVersionID == "" {
 		return newToolResultError("Missing required parameter: target_version_id"), nil
 	}
@@ -326,22 +333,23 @@ func (s *Server) handleCompareVersions(ctx context.Context, request mcp.CallTool
 }
 
 func (s *Server) handleListComponents(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	versionID, ok := request.Params.Arguments["version_id"].(string)
+	args := toolArguments(request)
+	versionID, ok := args["version_id"].(string)
 	if !ok || versionID == "" {
 		return newToolResultError("Missing required parameter: version_id"), nil
 	}
 
 	input := api.ListComponentsInput{
 		VersionID: versionID,
-		First:     getIntParam(request.Params.Arguments, "limit", 50),
+		First:     getIntParam(args, "limit", 50),
 	}
-	if search, ok := request.Params.Arguments["search"].(string); ok {
+	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
-	if kind, ok := request.Params.Arguments["kind"].(string); ok && kind != "" {
+	if kind, ok := args["kind"].(string); ok && kind != "" {
 		input.Kind = []string{kind}
 	}
-	if direct, ok := request.Params.Arguments["direct"].(bool); ok {
+	if direct, ok := args["direct"].(bool); ok {
 		input.Direct = &direct
 	}
 
@@ -372,12 +380,13 @@ func (s *Server) handleListComponents(ctx context.Context, request mcp.CallToolR
 }
 
 func (s *Server) handleGetComponent(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	id, ok := request.Params.Arguments["id"].(string)
+	args := toolArguments(request)
+	id, ok := args["id"].(string)
 	if !ok || id == "" {
 		return newToolResultError("Missing required parameter: id"), nil
 	}
 
-	versionID, ok := request.Params.Arguments["version_id"].(string)
+	versionID, ok := args["version_id"].(string)
 	if !ok || versionID == "" {
 		return newToolResultError("Missing required parameter: version_id"), nil
 	}
@@ -420,25 +429,26 @@ func (s *Server) handleGetComponent(ctx context.Context, request mcp.CallToolReq
 }
 
 func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	versionID, ok := request.Params.Arguments["version_id"].(string)
+	args := toolArguments(request)
+	versionID, ok := args["version_id"].(string)
 	if !ok || versionID == "" {
 		return newToolResultError("Missing required parameter: version_id"), nil
 	}
 
 	input := api.ListVersionVulnsInput{
 		VersionID: versionID,
-		First:     getIntParam(request.Params.Arguments, "limit", 50),
+		First:     getIntParam(args, "limit", 50),
 	}
-	if severity, ok := request.Params.Arguments["severity"].(string); ok && severity != "" {
+	if severity, ok := args["severity"].(string); ok && severity != "" {
 		input.Severity = []string{severity}
 	}
-	if status, ok := request.Params.Arguments["vex_status"].(string); ok && status != "" {
+	if status, ok := args["vex_status"].(string); ok && status != "" {
 		input.Status = []string{status}
 	}
-	if kev, ok := request.Params.Arguments["kev"].(bool); ok {
+	if kev, ok := args["kev"].(bool); ok {
 		input.Kev = &kev
 	}
-	if search, ok := request.Params.Arguments["search"].(string); ok {
+	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
 
@@ -497,7 +507,8 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 }
 
 func (s *Server) handleGetVulnerability(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	vulnID, ok := request.Params.Arguments["vuln_id"].(string)
+	args := toolArguments(request)
+	vulnID, ok := args["vuln_id"].(string)
 	if !ok || vulnID == "" {
 		return newToolResultError("Missing required parameter: vuln_id"), nil
 	}
@@ -540,16 +551,17 @@ func (s *Server) handleGetVulnerability(ctx context.Context, request mcp.CallToo
 }
 
 func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
 	input := api.ListComponentVulnsInput{
-		First: getIntParam(request.Params.Arguments, "limit", 50),
+		First: getIntParam(args, "limit", 50),
 	}
-	if search, ok := request.Params.Arguments["search"].(string); ok {
+	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
-	if severity, ok := request.Params.Arguments["severity"].(string); ok && severity != "" {
+	if severity, ok := args["severity"].(string); ok && severity != "" {
 		input.Severity = []string{severity}
 	}
-	if kev, ok := request.Params.Arguments["kev"].(bool); ok {
+	if kev, ok := args["kev"].(bool); ok {
 		input.Kev = &kev
 	}
 
@@ -600,10 +612,11 @@ func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.Ca
 }
 
 func (s *Server) handleListPolicies(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
 	input := api.ListPoliciesInput{
-		First: getIntParam(request.Params.Arguments, "limit", 20),
+		First: getIntParam(args, "limit", 20),
 	}
-	if search, ok := request.Params.Arguments["search"].(string); ok {
+	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
 
@@ -632,7 +645,8 @@ func (s *Server) handleListPolicies(ctx context.Context, request mcp.CallToolReq
 }
 
 func (s *Server) handleGetPolicy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	id, ok := request.Params.Arguments["id"].(string)
+	args := toolArguments(request)
+	id, ok := args["id"].(string)
 	if !ok || id == "" {
 		return newToolResultError("Missing required parameter: id"), nil
 	}
@@ -665,16 +679,17 @@ func (s *Server) handleGetPolicy(ctx context.Context, request mcp.CallToolReques
 }
 
 func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
 	input := api.ListPolicyResultsInput{
-		First: getIntParam(request.Params.Arguments, "limit", 50),
+		First: getIntParam(args, "limit", 50),
 	}
-	if policyID, ok := request.Params.Arguments["policy_id"].(string); ok {
+	if policyID, ok := args["policy_id"].(string); ok {
 		input.PolicyID = policyID
 	}
-	if versionID, ok := request.Params.Arguments["version_id"].(string); ok {
+	if versionID, ok := args["version_id"].(string); ok {
 		input.VersionID = versionID
 	}
-	if resultType, ok := request.Params.Arguments["result_type"].(string); ok {
+	if resultType, ok := args["result_type"].(string); ok {
 		input.ResultType = resultType
 	}
 
@@ -713,13 +728,14 @@ func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.Cal
 }
 
 func (s *Server) handleListLicenses(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
 	input := api.ListLicensesInput{
-		First: getIntParam(request.Params.Arguments, "limit", 50),
+		First: getIntParam(args, "limit", 50),
 	}
-	if status, ok := request.Params.Arguments["status"].(string); ok {
+	if status, ok := args["status"].(string); ok {
 		input.Status = status
 	}
-	if search, ok := request.Params.Arguments["search"].(string); ok {
+	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
 
@@ -766,6 +782,13 @@ func formatResult(data interface{}) (*mcp.CallToolResult, error) {
 		return newToolResultError(fmt.Sprintf("Failed to format result: %v", err)), nil
 	}
 	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+func toolArguments(request mcp.CallToolRequest) map[string]interface{} {
+	if args, ok := request.Params.Arguments.(map[string]interface{}); ok {
+		return args
+	}
+	return map[string]interface{}{}
 }
 
 func getIntParam(args map[string]interface{}, key string, defaultVal int) int {
