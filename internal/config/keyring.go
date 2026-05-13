@@ -31,6 +31,8 @@ var validTokenPrefixes = []string{
 	"lynk_live_",
 	"lynk_staging_",
 	"lynk_test_",
+	"lynk_service_live_",
+	"lynk_service_staging_",
 	"lynk_service_test_",
 }
 

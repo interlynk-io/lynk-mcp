@@ -24,6 +24,8 @@ func TestValidateTokenFormat_AcceptsKnownPrefixes(t *testing.T) {
 		"lynk_live_abc",
 		"lynk_staging_abc",
 		"lynk_test_abc",
+		"lynk_service_live_abc",
+		"lynk_service_staging_abc",
 		"lynk_service_test_abc",
 	}
 
@@ -37,8 +39,6 @@ func TestValidateTokenFormat_AcceptsKnownPrefixes(t *testing.T) {
 func TestValidateTokenFormat_RejectsUnknownPrefixes(t *testing.T) {
 	tokens := []string{
 		"",
-		"lynk_service_live_abc",
-		"lynk_service_staging_abc",
 		"other_test_abc",
 	}
 

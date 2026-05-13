@@ -125,6 +125,8 @@ cd lynk-mcp
 make build
 ```
 
+The binary is placed in `./build/lynk-mcp`. You can run it directly from there, or run `make install` to install it to `$GOPATH/bin` (typically `~/go/bin`) and use it from anywhere.
+
 ## Configuration
 
 ### Initial Setup
@@ -334,6 +336,7 @@ Add to `~/.config/zed/settings.json`:
 
 ```bash
 make build          # Build for current platform
+make install        # Build and install to $GOPATH/bin
 make build-all      # Build for all platforms
 make test           # Run tests
 make lint           # Run linter
@@ -375,5 +378,3 @@ Apache License 2.0
 ---
 
 Made with care by [Interlynk.io](https://www.interlynk.io)
-
-d
