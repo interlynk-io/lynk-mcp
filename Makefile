@@ -119,7 +119,7 @@ build-all: ## Build binaries for all platforms
 .PHONY: install
 install: build ## Install binary to GOBIN
 	@echo "Installing $(BINARY_NAME) to $(GOBIN)..."
-	@install -m 755 $(BUILD_DIR)/$(BINARY_NAME) $(GOBIN)/$(BINARY_NAME)
+	@mkdir -p $(GOBIN) && cp $(BUILD_DIR)/$(BINARY_NAME) $(GOBIN)/$(BINARY_NAME) && chmod 755 $(GOBIN)/$(BINARY_NAME)
 	@echo "Installed to $(GOBIN)/$(BINARY_NAME)"
 
 ##@ Running
