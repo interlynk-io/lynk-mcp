@@ -204,13 +204,23 @@ func (s *Server) registerTools() {
 		mcp.WithString("vuln_id", mcp.Required(), mcp.Description("The CVE ID (e.g., CVE-2021-44228) or UUID")),
 	), s.handleGetVulnerability)
 
+	s.mcp.AddTool(mcp.NewTool("list_vex_statuses",
+		mcp.WithDescription("List VEX statuses with UUIDs for CVE triage"),
+	), s.handleListVexStatuses)
+
+	s.mcp.AddTool(mcp.NewTool("list_vex_justifications",
+		mcp.WithDescription("List VEX justifications with UUIDs for CVE triage"),
+	), s.handleListVexJustifications)
+
 	s.mcp.AddTool(mcp.NewTool("update_component_vex",
-		mcp.WithDescription("Destructively update VEX data for a component vulnerability. Requires confirm=true. Only pass fields that should change."),
+		mcp.WithDescription("Destructively update VEX data for a component vulnerability. Requires confirm=true. Only pass fields that should change. Status and justification may be supplied by UUID or by name."),
 		mcp.WithString("component_vuln_id", mcp.Required(), mcp.Description("The UUID of the component vulnerability to update")),
 		mcp.WithString("current_version_id", mcp.Required(), mcp.Description("The UUID of the current version/SBOM context")),
 		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to perform this destructive update")),
 		mcp.WithString("vex_status_id", mcp.Description("VEX status UUID")),
+		mcp.WithString("vex_status", mcp.Description("VEX status name (e.g., affected, not_affected, fixed); resolved to UUID automatically")),
 		mcp.WithString("vex_justification_id", mcp.Description("VEX justification UUID")),
+		mcp.WithString("vex_justification", mcp.Description("VEX justification name (e.g., vulnerable_code_not_present); resolved to UUID automatically")),
 		mcp.WithString("cdx_response_id", mcp.Description("CycloneDX response UUID")),
 		mcp.WithString("note", mcp.Description("VEX note")),
 		mcp.WithString("impact", mcp.Description("Impact statement")),

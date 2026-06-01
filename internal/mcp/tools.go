@@ -644,9 +644,11 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 		}
 		if cv.VexStatus != nil {
 			vuln["vexStatus"] = cv.VexStatus.Name
+			vuln["vexStatusId"] = cv.VexStatus.ID
 		}
 		if cv.VexJustification != nil {
 			vuln["vexJustification"] = cv.VexJustification.Name
+			vuln["vexJustificationId"] = cv.VexJustification.ID
 		}
 		vulns[i] = vuln
 	}
@@ -702,6 +704,44 @@ func (s *Server) handleGetVulnerability(ctx context.Context, request mcp.CallToo
 	return formatResult(result)
 }
 
+func (s *Server) handleListVexStatuses(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	statuses, err := s.client.GetVexStatuses(ctx)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to list VEX statuses: %v", err)), nil
+	}
+
+	result := make([]map[string]interface{}, len(statuses))
+	for i, status := range statuses {
+		result[i] = map[string]interface{}{
+			"id":   status.ID,
+			"name": status.Name,
+		}
+	}
+
+	return formatResult(map[string]interface{}{
+		"vexStatuses": result,
+	})
+}
+
+func (s *Server) handleListVexJustifications(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	justifications, err := s.client.GetVexJustifications(ctx)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to list VEX justifications: %v", err)), nil
+	}
+
+	result := make([]map[string]interface{}, len(justifications))
+	for i, justification := range justifications {
+		result[i] = map[string]interface{}{
+			"id":   justification.ID,
+			"name": justification.Name,
+		}
+	}
+
+	return formatResult(map[string]interface{}{
+		"vexJustifications": result,
+	})
+}
+
 func (s *Server) handleUpdateComponentVex(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	if !confirmed(args) {
@@ -716,7 +756,7 @@ func (s *Server) handleUpdateComponentVex(ctx context.Context, request mcp.CallT
 	if !ok || currentVersionID == "" {
 		return newToolResultError("Missing required parameter: current_version_id"), nil
 	}
-	if !hasAnyParam(args, "vex_status_id", "vex_justification_id", "cdx_response_id", "note", "impact", "detail", "action", "fixed_in", "propagate_vex", "resolution_date", "component_vuln_custom_field_attributes") {
+	if !hasAnyParam(args, "vex_status_id", "vex_status", "vex_justification_id", "vex_justification", "cdx_response_id", "note", "impact", "detail", "action", "fixed_in", "propagate_vex", "resolution_date", "component_vuln_custom_field_attributes") {
 		return newToolResultError("No update fields provided"), nil
 	}
 
@@ -725,11 +765,20 @@ func (s *Server) handleUpdateComponentVex(ctx context.Context, request mcp.CallT
 		return newToolResultError(err.Error()), nil
 	}
 
+	vexStatusID, err := s.resolveVexStatusID(ctx, args)
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+	vexJustificationID, err := s.resolveVexJustificationID(ctx, args)
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+
 	result, err := s.client.UpdateComponentVex(ctx, api.UpdateComponentVexInput{
 		ComponentVulnID:                    componentVulnID,
 		CurrentVersionID:                   currentVersionID,
-		VexStatusID:                        getStringPtrParam(args, "vex_status_id"),
-		VexJustificationID:                 getStringPtrParam(args, "vex_justification_id"),
+		VexStatusID:                        vexStatusID,
+		VexJustificationID:                 vexJustificationID,
 		CDXResponseID:                      getStringPtrParam(args, "cdx_response_id"),
 		Note:                               getStringPtrParam(args, "note"),
 		Impact:                             getStringPtrParam(args, "impact"),
@@ -803,6 +852,11 @@ func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.Ca
 		}
 		if cv.VexStatus != nil {
 			vuln["vexStatus"] = cv.VexStatus.Name
+			vuln["vexStatusId"] = cv.VexStatus.ID
+		}
+		if cv.VexJustification != nil {
+			vuln["vexJustification"] = cv.VexJustification.Name
+			vuln["vexJustificationId"] = cv.VexJustification.ID
 		}
 		vulns[i] = vuln
 	}
@@ -1068,6 +1122,76 @@ func getBoolPtrParam(args map[string]interface{}, key string) *bool {
 		return nil
 	}
 	return &boolean
+}
+
+func (s *Server) resolveVexStatusID(ctx context.Context, args map[string]interface{}) (*string, error) {
+	if id := getStringPtrParam(args, "vex_status_id"); id != nil && *id != "" {
+		return id, nil
+	}
+
+	name := strings.TrimSpace(stringParam(args, "vex_status"))
+	if name == "" {
+		return nil, nil
+	}
+
+	statuses, err := s.client.GetVexStatuses(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve VEX status %q: %w", name, err)
+	}
+	for _, status := range statuses {
+		if sameVexName(status.Name, name) {
+			id := status.ID
+			return &id, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unknown VEX status %q; use list_vex_statuses to see supported values", name)
+}
+
+func (s *Server) resolveVexJustificationID(ctx context.Context, args map[string]interface{}) (*string, error) {
+	if id := getStringPtrParam(args, "vex_justification_id"); id != nil && *id != "" {
+		return id, nil
+	}
+
+	name := strings.TrimSpace(stringParam(args, "vex_justification"))
+	if name == "" {
+		return nil, nil
+	}
+
+	justifications, err := s.client.GetVexJustifications(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve VEX justification %q: %w", name, err)
+	}
+	for _, justification := range justifications {
+		if sameVexName(justification.Name, name) {
+			id := justification.ID
+			return &id, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unknown VEX justification %q; use list_vex_justifications to see supported values", name)
+}
+
+func stringParam(args map[string]interface{}, key string) string {
+	val, ok := args[key].(string)
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+func sameVexName(left, right string) bool {
+	return normalizeVexName(left) == normalizeVexName(right)
+}
+
+func normalizeVexName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = strings.ReplaceAll(name, "-", "_")
+	name = strings.ReplaceAll(name, " ", "_")
+	for strings.Contains(name, "__") {
+		name = strings.ReplaceAll(name, "__", "_")
+	}
+	return name
 }
 
 func getStringSlicePtrParam(args map[string]interface{}, key string) *[]string {
