@@ -51,6 +51,55 @@ const securityIncidentFields = `
 	}
 `
 
+const securityIncidentUpdateFields = `
+	title
+	updateType
+	body
+	occurredAt
+`
+
+const securityIncidentFindingFields = `
+	id
+	status
+	matchMethod
+	matchedFields
+	firstDetectedAt
+	lastConfirmedAt
+	isPartSbom
+	component {
+		id
+		name
+		version
+		kind
+		purl
+		cpes
+		licensesExp
+		group
+		primary
+		internal
+		sbomId
+		updatedAt
+		sbom {
+			id
+			projectVersion
+			project {
+				id
+				name
+				projectGroupId
+			}
+		}
+	}
+	rootSbom {
+		id
+		projectVersion
+		project {
+			id
+			name
+			projectGroupId
+		}
+	}
+`
+
 const (
 	// SecurityIncidentsQuery lists security incidents visible to the current organization.
 	SecurityIncidentsQuery = `
@@ -70,10 +119,46 @@ const (
 		}
 	`
 
+	// SecurityIncidentFindingsQuery fetches customer-visible findings for the current organization.
+	SecurityIncidentFindingsQuery = `
+		query SecurityIncidentFindings($id: Uuid!, $statuses: [SecurityIncidentFindingStatusEnum!]) {
+			securityIncident(id: $id) {
+				id
+				title
+				slug
+				status
+				severity
+				findings(statuses: $statuses) {
+					` + securityIncidentFindingFields + `
+				}
+			}
+		}
+	`
+
 	// SecurityIncidentCreateMutation creates a draft security incident.
 	SecurityIncidentCreateMutation = `
 		mutation CreateSecurityIncident($title: String!, $severity: String!, $confidence: String, $summary: String, $recommendedActions: String, $sourceUrls: String) {
 			createSecurityIncident(input: {
+				title: $title,
+				severity: $severity,
+				confidence: $confidence,
+				summary: $summary,
+				recommendedActions: $recommendedActions,
+				sourceUrls: $sourceUrls
+			}) {
+				securityIncident {
+					` + securityIncidentFields + `
+				}
+				errors
+			}
+		}
+	`
+
+	// SecurityIncidentUpdateMutation updates editable incident fields.
+	SecurityIncidentUpdateMutation = `
+		mutation UpdateSecurityIncident($id: Uuid!, $title: String, $severity: String, $confidence: String, $summary: String, $recommendedActions: String, $sourceUrls: String) {
+			updateSecurityIncident(input: {
+				id: $id,
 				title: $title,
 				severity: $severity,
 				confidence: $confidence,
@@ -109,12 +194,87 @@ const (
 		}
 	`
 
+	// SecurityIncidentWithdrawMarkersMutation withdraws active markers from an incident.
+	SecurityIncidentWithdrawMarkersMutation = `
+		mutation WithdrawSecurityIncidentMarkers($securityIncidentId: Uuid!, $markerIds: [Uuid!]!) {
+			withdrawSecurityIncidentMarkers(input: { securityIncidentId: $securityIncidentId, markerIds: $markerIds }) {
+				markers {
+					id
+					markerType
+					purl
+					componentName
+					componentVersion
+					githubUrl
+					active
+					addedAt
+					withdrawnAt
+				}
+				errors
+			}
+		}
+	`
+
 	// SecurityIncidentPublishMutation publishes a draft incident and queues impact scanning.
 	SecurityIncidentPublishMutation = `
 		mutation PublishSecurityIncident($id: Uuid!) {
 			publishSecurityIncident(input: { id: $id }) {
 				securityIncident {
 					` + securityIncidentFields + `
+				}
+				errors
+			}
+		}
+	`
+
+	// SecurityIncidentResolveMutation resolves an active incident.
+	SecurityIncidentResolveMutation = `
+		mutation ResolveSecurityIncident($id: Uuid!) {
+			resolveSecurityIncident(input: { id: $id }) {
+				securityIncident {
+					` + securityIncidentFields + `
+				}
+				errors
+			}
+		}
+	`
+
+	// SecurityIncidentArchiveMutation archives an incident.
+	SecurityIncidentArchiveMutation = `
+		mutation ArchiveSecurityIncident($id: Uuid!) {
+			archiveSecurityIncident(input: { id: $id }) {
+				securityIncident {
+					` + securityIncidentFields + `
+				}
+				errors
+			}
+		}
+	`
+
+	// SecurityIncidentCreateUpdateMutation adds a timeline update to an incident.
+	SecurityIncidentCreateUpdateMutation = `
+		mutation CreateSecurityIncidentUpdate($securityIncidentId: Uuid!, $title: String!, $updateType: String!, $occurredAt: ISO8601DateTime!, $body: String, $customerVisible: Boolean = false) {
+			createSecurityIncidentUpdate(input: {
+				securityIncidentId: $securityIncidentId,
+				title: $title,
+				updateType: $updateType,
+				occurredAt: $occurredAt,
+				body: $body,
+				customerVisible: $customerVisible
+			}) {
+				securityIncidentUpdate {
+					` + securityIncidentUpdateFields + `
+				}
+				errors
+			}
+		}
+	`
+
+	// SecurityIncidentSuppressFindingMutation suppresses a finding for the current organization.
+	SecurityIncidentSuppressFindingMutation = `
+		mutation SuppressSecurityIncidentFinding($findingId: Uuid!, $reason: String) {
+			suppressSecurityIncidentFinding(input: { findingId: $findingId, reason: $reason }) {
+				finding {
+					` + securityIncidentFindingFields + `
 				}
 				errors
 			}
@@ -211,6 +371,17 @@ const (
 						}
 					}
 				}
+			}
+		}
+	`
+
+	// SecurityIncidentEnabledOrganizationsQuery lists organizations with incident scans enabled.
+	SecurityIncidentEnabledOrganizationsQuery = `
+		query SecurityIncidentEnabledOrganizations {
+			securityIncidentEnabledOrganizations {
+				id
+				name
+				securityIncidentsEnabled
 			}
 		}
 	`

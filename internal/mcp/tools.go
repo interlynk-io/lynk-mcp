@@ -16,6 +16,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -942,6 +943,42 @@ func (s *Server) handleCreateSecurityIncident(ctx context.Context, request mcp.C
 	return formatResult(formatSecurityIncident(result.SecurityIncident))
 }
 
+func (s *Server) handleUpdateSecurityIncident(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for update_security_incident"), nil
+	}
+
+	id, ok := args["id"].(string)
+	if !ok || id == "" {
+		return newToolResultError("Missing required parameter: id"), nil
+	}
+	if !hasAnyParam(args, "title", "severity", "confidence", "summary", "recommended_actions", "source_urls") {
+		return newToolResultError("At least one editable field must be provided"), nil
+	}
+
+	result, err := s.client.UpdateSecurityIncident(ctx, api.UpdateSecurityIncidentInput{
+		ID:                 id,
+		Title:              getStringPtrParam(args, "title"),
+		Severity:           getStringPtrParam(args, "severity"),
+		Confidence:         getStringPtrParam(args, "confidence"),
+		Summary:            getStringPtrParam(args, "summary"),
+		RecommendedActions: getStringPtrParam(args, "recommended_actions"),
+		SourceURLs:         getStringPtrParam(args, "source_urls"),
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to update security incident: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to update security incident: %s", strings.Join(result.Errors, "; "))), nil
+	}
+	if result.SecurityIncident == nil {
+		return newToolResultError("Failed to update security incident: API returned no incident"), nil
+	}
+
+	return formatResult(formatSecurityIncident(result.SecurityIncident))
+}
+
 func (s *Server) handleAddSecurityIncidentMarkers(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	if !confirmed(args) {
@@ -980,6 +1017,84 @@ func (s *Server) handleAddSecurityIncidentMarkers(ctx context.Context, request m
 	})
 }
 
+func (s *Server) handleImportSecurityIncidentMarkersCSV(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for import_security_incident_markers_csv"), nil
+	}
+
+	incidentID, ok := args["security_incident_id"].(string)
+	if !ok || incidentID == "" {
+		return newToolResultError("Missing required parameter: security_incident_id"), nil
+	}
+	csvContent, ok := args["csv_content"].(string)
+	if !ok || strings.TrimSpace(csvContent) == "" {
+		return newToolResultError("Missing required parameter: csv_content"), nil
+	}
+
+	markers, err := getSecurityIncidentMarkerInputsCSV(csvContent)
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+	if len(markers) == 0 {
+		return newToolResultError("CSV did not contain any marker rows"), nil
+	}
+
+	result, err := s.client.AddSecurityIncidentMarkers(ctx, incidentID, markers)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to import security incident markers from CSV: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to import security incident markers from CSV: %s", strings.Join(result.Errors, "; "))), nil
+	}
+
+	formatted := make([]map[string]interface{}, len(result.Markers))
+	for i := range result.Markers {
+		formatted[i] = formatSecurityIncidentMarker(&result.Markers[i])
+	}
+
+	return formatResult(map[string]interface{}{
+		"markers":      formatted,
+		"totalCount":   len(formatted),
+		"scanBehavior": "CSV rows were parsed locally and submitted through addSecurityIncidentMarkers; active/resolved incidents queue impact scanning for added markers.",
+	})
+}
+
+func (s *Server) handleWithdrawSecurityIncidentMarkers(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for withdraw_security_incident_markers"), nil
+	}
+
+	incidentID, ok := args["security_incident_id"].(string)
+	if !ok || incidentID == "" {
+		return newToolResultError("Missing required parameter: security_incident_id"), nil
+	}
+	markerIDs := getStringSliceParam(args, "marker_ids")
+	if len(markerIDs) == 0 {
+		return newToolResultError("Missing required parameter: marker_ids"), nil
+	}
+
+	result, err := s.client.WithdrawSecurityIncidentMarkers(ctx, incidentID, markerIDs)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to withdraw security incident markers: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to withdraw security incident markers: %s", strings.Join(result.Errors, "; "))), nil
+	}
+
+	formatted := make([]map[string]interface{}, len(result.Markers))
+	for i := range result.Markers {
+		formatted[i] = formatSecurityIncidentMarker(&result.Markers[i])
+	}
+
+	return formatResult(map[string]interface{}{
+		"markers":      formatted,
+		"totalCount":   len(formatted),
+		"scanBehavior": "Active findings for withdrawn markers were resolved and organization impact state was recalculated by the API.",
+	})
+}
+
 func (s *Server) handlePublishSecurityIncident(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return s.handleSecurityIncidentMutation(
 		ctx,
@@ -989,6 +1104,125 @@ func (s *Server) handlePublishSecurityIncident(ctx context.Context, request mcp.
 		s.client.PublishSecurityIncident,
 		"Publishing queues the initial impact scan through the incident_published event.",
 	)
+}
+
+func (s *Server) handleResolveSecurityIncident(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleSecurityIncidentMutation(
+		ctx,
+		request,
+		"resolve_security_incident",
+		"resolve security incident",
+		s.client.ResolveSecurityIncident,
+		"Resolving emits an incident_resolved event for downstream state updates.",
+	)
+}
+
+func (s *Server) handleArchiveSecurityIncident(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleSecurityIncidentMutation(
+		ctx,
+		request,
+		"archive_security_incident",
+		"archive security incident",
+		s.client.ArchiveSecurityIncident,
+		"Archiving emits an incident_archived event.",
+	)
+}
+
+func (s *Server) handleCreateSecurityIncidentUpdate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for create_security_incident_update"), nil
+	}
+
+	incidentID, ok := args["security_incident_id"].(string)
+	if !ok || incidentID == "" {
+		return newToolResultError("Missing required parameter: security_incident_id"), nil
+	}
+	title, ok := args["title"].(string)
+	if !ok || title == "" {
+		return newToolResultError("Missing required parameter: title"), nil
+	}
+	updateType, ok := args["update_type"].(string)
+	if !ok || updateType == "" {
+		return newToolResultError("Missing required parameter: update_type"), nil
+	}
+	occurredAt, ok := args["occurred_at"].(string)
+	if !ok || occurredAt == "" {
+		return newToolResultError("Missing required parameter: occurred_at"), nil
+	}
+
+	result, err := s.client.CreateSecurityIncidentUpdate(ctx, api.CreateSecurityIncidentUpdateInput{
+		SecurityIncidentID: incidentID,
+		Title:              title,
+		UpdateType:         updateType,
+		OccurredAt:         occurredAt,
+		Body:               getStringPtrParam(args, "body"),
+		CustomerVisible:    getBoolPtrParam(args, "customer_visible"),
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to create security incident update: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to create security incident update: %s", strings.Join(result.Errors, "; "))), nil
+	}
+	if result.Update == nil {
+		return newToolResultError("Failed to create security incident update: API returned no update"), nil
+	}
+
+	return formatResult(formatSecurityIncidentUpdate(result.Update))
+}
+
+func (s *Server) handleGetSecurityIncidentFindings(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	id, ok := args["id"].(string)
+	if !ok || id == "" {
+		return newToolResultError("Missing required parameter: id"), nil
+	}
+
+	result, err := s.client.GetSecurityIncidentFindings(ctx, api.SecurityIncidentFindingsInput{
+		IncidentID: id,
+		Statuses:   getStringSliceParam(args, "statuses"),
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to get security incident findings: %v", err)), nil
+	}
+	if result == nil {
+		return newToolResultError("Security incident not found"), nil
+	}
+
+	return formatResult(formatSecurityIncidentFindingsResult(result))
+}
+
+func (s *Server) handleSuppressSecurityIncidentFinding(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for suppress_security_incident_finding"), nil
+	}
+
+	findingID, ok := args["finding_id"].(string)
+	if !ok || findingID == "" {
+		return newToolResultError("Missing required parameter: finding_id"), nil
+	}
+	reason, ok := args["reason"].(string)
+	if !ok || strings.TrimSpace(reason) == "" {
+		return newToolResultError("Missing required parameter: reason"), nil
+	}
+
+	result, err := s.client.SuppressSecurityIncidentFinding(ctx, api.SuppressSecurityIncidentFindingInput{
+		FindingID: findingID,
+		Reason:    reason,
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to suppress security incident finding: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to suppress security incident finding: %s", strings.Join(result.Errors, "; "))), nil
+	}
+	if result.Finding == nil {
+		return newToolResultError("Failed to suppress security incident finding: API returned no finding"), nil
+	}
+
+	return formatResult(formatSecurityIncidentFinding(result.Finding))
 }
 
 func (s *Server) handleRerunSecurityIncidentImpactScan(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1057,6 +1291,27 @@ func (s *Server) handleGetSecurityIncidentDryRunResult(ctx context.Context, requ
 	}
 
 	return formatResult(formatSecurityIncidentDryRunResult(result))
+}
+
+func (s *Server) handleSecurityIncidentEnabledOrganizations(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	organizations, err := s.client.SecurityIncidentEnabledOrganizations(ctx)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to list security incident enabled organizations: %v", err)), nil
+	}
+
+	formatted := make([]map[string]interface{}, len(organizations))
+	for i := range organizations {
+		formatted[i] = map[string]interface{}{
+			"id":                       organizations[i].ID,
+			"name":                     organizations[i].Name,
+			"securityIncidentsEnabled": organizations[i].SecurityIncidentsEnabled,
+		}
+	}
+
+	return formatResult(map[string]interface{}{
+		"organizations": formatted,
+		"totalCount":    len(formatted),
+	})
 }
 
 func (s *Server) handleSecurityIncidentMutation(
@@ -1570,6 +1825,64 @@ func getSecurityIncidentMarkerInputsParam(args map[string]interface{}, key strin
 	return result, nil
 }
 
+func getSecurityIncidentMarkerInputsCSV(csvContent string) ([]api.SecurityIncidentMarkerInput, error) {
+	reader := csv.NewReader(strings.NewReader(csvContent))
+	reader.TrimLeadingSpace = true
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("csv_content is invalid: %w", err)
+	}
+	if len(records) == 0 {
+		return nil, fmt.Errorf("csv_content requires a header row")
+	}
+
+	headers := make(map[string]int, len(records[0]))
+	for i, header := range records[0] {
+		headers[strings.TrimSpace(header)] = i
+	}
+	if _, ok := headers["marker_type"]; !ok {
+		return nil, fmt.Errorf("csv_content missing required column: marker_type")
+	}
+
+	result := make([]api.SecurityIncidentMarkerInput, 0, len(records)-1)
+	for i, row := range records[1:] {
+		if csvRowBlank(row) {
+			continue
+		}
+
+		markerType := csvColumnValue(headers, row, "marker_type")
+		if markerType == "" {
+			return nil, fmt.Errorf("csv row %d requires marker_type", i+2)
+		}
+
+		result = append(result, api.SecurityIncidentMarkerInput{
+			MarkerType:       markerType,
+			Purl:             csvColumnValue(headers, row, "purl"),
+			ComponentName:    csvColumnValue(headers, row, "component_name"),
+			ComponentVersion: csvColumnValue(headers, row, "component_version"),
+			GithubURL:        csvColumnValue(headers, row, "github_url"),
+		})
+	}
+	return result, nil
+}
+
+func csvColumnValue(headers map[string]int, row []string, key string) string {
+	index, ok := headers[key]
+	if !ok || index >= len(row) {
+		return ""
+	}
+	return strings.TrimSpace(row[index])
+}
+
+func csvRowBlank(row []string) bool {
+	for _, value := range row {
+		if strings.TrimSpace(value) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func formatSecurityIncident(incident *api.SecurityIncident) map[string]interface{} {
 	markers := make([]map[string]interface{}, len(incident.Markers))
 	for i := range incident.Markers {
@@ -1610,6 +1923,15 @@ func formatSecurityIncident(incident *api.SecurityIncident) map[string]interface
 	return result
 }
 
+func formatSecurityIncidentUpdate(update *api.SecurityIncidentUpdate) map[string]interface{} {
+	return map[string]interface{}{
+		"title":      update.Title,
+		"updateType": update.UpdateType,
+		"body":       update.Body,
+		"occurredAt": update.OccurredAt,
+	}
+}
+
 func formatSecurityIncidentMarker(marker *api.SecurityIncidentMarker) map[string]interface{} {
 	return map[string]interface{}{
 		"id":               marker.ID,
@@ -1632,6 +1954,95 @@ func activeSecurityIncidentMarkerCount(markers []api.SecurityIncidentMarker) int
 		}
 	}
 	return count
+}
+
+func formatSecurityIncidentFindingsResult(result *api.SecurityIncidentFindingsResult) map[string]interface{} {
+	findings := make([]map[string]interface{}, len(result.Findings))
+	for i := range result.Findings {
+		findings[i] = formatSecurityIncidentFinding(&result.Findings[i])
+	}
+
+	return map[string]interface{}{
+		"incidentId": result.IncidentID,
+		"title":      result.Title,
+		"slug":       result.Slug,
+		"status":     result.Status,
+		"severity":   result.Severity,
+		"findings":   findings,
+		"totalCount": len(findings),
+	}
+}
+
+func formatSecurityIncidentFinding(finding *api.SecurityIncidentFinding) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":              finding.ID,
+		"status":          finding.Status,
+		"matchMethod":     finding.MatchMethod,
+		"matchedFields":   finding.MatchedFields,
+		"firstDetectedAt": finding.FirstDetectedAt,
+		"lastConfirmedAt": finding.LastConfirmedAt,
+		"isPartSbom":      finding.IsPartSbom,
+	}
+
+	if finding.Component != nil {
+		result["component"] = formatSecurityIncidentFindingComponent(finding.Component)
+		result["componentId"] = finding.Component.ID
+		result["componentName"] = finding.Component.Name
+		result["componentVersion"] = finding.Component.Version
+		result["componentPurl"] = finding.Component.Purl
+		result["componentSbomId"] = finding.Component.SbomID
+		if finding.Component.Sbom != nil {
+			result["componentSbomProjectVersion"] = finding.Component.Sbom.ProjectVersion
+		}
+	}
+
+	if finding.RootSbom != nil {
+		result["rootSbom"] = formatSecurityIncidentFindingSbom(finding.RootSbom)
+		result["rootSbomId"] = finding.RootSbom.ID
+		result["rootProjectVersion"] = finding.RootSbom.ProjectVersion
+		if finding.RootSbom.Project != nil {
+			result["rootProjectId"] = finding.RootSbom.Project.ID
+			result["rootProjectName"] = finding.RootSbom.Project.Name
+		}
+	}
+
+	return result
+}
+
+func formatSecurityIncidentFindingComponent(component *api.SecurityIncidentFindingComponent) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":          component.ID,
+		"name":        component.Name,
+		"version":     component.Version,
+		"kind":        component.Kind,
+		"purl":        component.Purl,
+		"cpes":        component.Cpes,
+		"licensesExp": component.LicensesExp,
+		"group":       component.Group,
+		"primary":     component.Primary,
+		"internal":    component.Internal,
+		"sbomId":      component.SbomID,
+		"updatedAt":   component.UpdatedAt,
+	}
+	if component.Sbom != nil {
+		result["sbom"] = formatSecurityIncidentFindingSbom(component.Sbom)
+	}
+	return result
+}
+
+func formatSecurityIncidentFindingSbom(sbom *api.SecurityIncidentFindingSbom) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":             sbom.ID,
+		"projectVersion": sbom.ProjectVersion,
+	}
+	if sbom.Project != nil {
+		result["project"] = map[string]interface{}{
+			"id":             sbom.Project.ID,
+			"name":           sbom.Project.Name,
+			"projectGroupId": sbom.Project.ProjectGroupID,
+		}
+	}
+	return result
 }
 
 func formatSecurityIncidentDryRunResult(result *api.SecurityIncidentDryRunResult) map[string]interface{} {

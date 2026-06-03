@@ -270,6 +270,18 @@ func (s *Server) registerTools() {
 		mcp.WithString("source_urls", mcp.Description("Markdown source URLs")),
 	), s.handleCreateSecurityIncident)
 
+	s.mcp.AddTool(mcp.NewTool("update_security_incident",
+		mcp.WithDescription("Update editable fields on a supply-chain security incident. Requires operator organization permissions and confirm=true."),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to update the incident")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the security incident")),
+		mcp.WithString("title", mcp.Description("Incident title")),
+		mcp.WithString("severity", mcp.Description("Incident severity: critical, high, medium, low, unknown")),
+		mcp.WithString("confidence", mcp.Description("Incident confidence: confirmed, likely, investigating")),
+		mcp.WithString("summary", mcp.Description("Incident summary")),
+		mcp.WithString("recommended_actions", mcp.Description("Markdown recommended actions")),
+		mcp.WithString("source_urls", mcp.Description("Markdown source URLs")),
+	), s.handleUpdateSecurityIncident)
+
 	s.mcp.AddTool(mcp.NewTool("add_security_incident_markers",
 		mcp.WithDescription("Add markers to a security incident. For active/resolved incidents, marker additions queue impact scanning. Requires confirm=true."),
 		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to add markers")),
@@ -287,11 +299,61 @@ func (s *Server) registerTools() {
 		})),
 	), s.handleAddSecurityIncidentMarkers)
 
+	s.mcp.AddTool(mcp.NewTool("import_security_incident_markers_csv",
+		mcp.WithDescription("Import security incident markers from CSV text. Required column: marker_type. Optional columns: purl, component_name, component_version, github_url. Requires confirm=true."),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to import markers")),
+		mcp.WithString("security_incident_id", mcp.Required(), mcp.Description("The UUID of the security incident")),
+		mcp.WithString("csv_content", mcp.Required(), mcp.Description("CSV text with marker_type,purl,component_name,component_version,github_url columns")),
+	), s.handleImportSecurityIncidentMarkersCSV)
+
+	s.mcp.AddTool(mcp.NewTool("withdraw_security_incident_markers",
+		mcp.WithDescription("Withdraw active markers from a security incident and resolve related active findings. Requires confirm=true."),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to withdraw markers")),
+		mcp.WithString("security_incident_id", mcp.Required(), mcp.Description("The UUID of the security incident")),
+		mcp.WithArray("marker_ids", mcp.Required(), mcp.Description("Marker UUIDs to withdraw"), mcp.WithStringItems()),
+	), s.handleWithdrawSecurityIncidentMarkers)
+
 	s.mcp.AddTool(mcp.NewTool("publish_security_incident",
 		mcp.WithDescription("Publish a draft security incident and queue the initial impact scan. Requires confirm=true."),
 		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to publish the incident")),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the security incident")),
 	), s.handlePublishSecurityIncident)
+
+	s.mcp.AddTool(mcp.NewTool("resolve_security_incident",
+		mcp.WithDescription("Resolve an active security incident. Requires confirm=true."),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to resolve the incident")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the security incident")),
+	), s.handleResolveSecurityIncident)
+
+	s.mcp.AddTool(mcp.NewTool("archive_security_incident",
+		mcp.WithDescription("Archive a security incident. Requires confirm=true."),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to archive the incident")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the security incident")),
+	), s.handleArchiveSecurityIncident)
+
+	s.mcp.AddTool(mcp.NewTool("create_security_incident_update",
+		mcp.WithDescription("Add a timeline update to a security incident. Requires operator organization permissions and confirm=true."),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to create the timeline update")),
+		mcp.WithString("security_incident_id", mcp.Required(), mcp.Description("The UUID of the security incident")),
+		mcp.WithString("title", mcp.Required(), mcp.Description("Update title")),
+		mcp.WithString("update_type", mcp.Required(), mcp.Description("Update type: indicator_added, indicator_withdrawn, guidance_changed, status_changed, source_added, correction")),
+		mcp.WithString("occurred_at", mcp.Required(), mcp.Description("When the update occurred, as ISO8601 datetime")),
+		mcp.WithString("body", mcp.Description("Update body")),
+		mcp.WithBoolean("customer_visible", mcp.Description("Whether this update is visible to customers")),
+	), s.handleCreateSecurityIncidentUpdate)
+
+	s.mcp.AddTool(mcp.NewTool("get_security_incident_findings",
+		mcp.WithDescription("Get customer-facing findings for a security incident in the current organization"),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the security incident")),
+		mcp.WithArray("statuses", mcp.Description("Filter finding statuses: active, resolved, suppressed"), mcp.WithStringItems()),
+	), s.handleGetSecurityIncidentFindings)
+
+	s.mcp.AddTool(mcp.NewTool("suppress_security_incident_finding",
+		mcp.WithDescription("Suppress a specific security incident finding for the current organization. Requires confirm=true and a reason."),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to suppress the finding")),
+		mcp.WithString("finding_id", mcp.Required(), mcp.Description("The UUID of the finding")),
+		mcp.WithString("reason", mcp.Required(), mcp.Description("Suppression reason")),
+	), s.handleSuppressSecurityIncidentFinding)
 
 	s.mcp.AddTool(mcp.NewTool("rerun_security_incident_impact_scan",
 		mcp.WithDescription("Queue impact scanning for an active or resolved security incident. Requires confirm=true."),
@@ -312,6 +374,10 @@ func (s *Server) registerTools() {
 		mcp.WithNumber("limit", mcp.Description("Maximum number of findings to return when org_id is provided (default: 50, max: 100)")),
 		mcp.WithString("after", mcp.Description("Cursor for the next findings page")),
 	), s.handleGetSecurityIncidentDryRunResult)
+
+	s.mcp.AddTool(mcp.NewTool("security_incident_enabled_organizations",
+		mcp.WithDescription("List organizations with security incident scanning enabled. Operator-only."),
+	), s.handleSecurityIncidentEnabledOrganizations)
 
 	// Policy tools
 	s.mcp.AddTool(mcp.NewTool("list_policies",

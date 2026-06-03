@@ -16,11 +16,26 @@ package graphql
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 )
 
 func TestProjectGroupQuery_ProjectsUsesConnectionNodes(t *testing.T) {
 	if !regexp.MustCompile(`projects\s*\([^)]*\)\s*\{\s*nodes\s*\{`).MatchString(ProjectGroupQuery) {
 		t.Fatal("ProjectGroupQuery must select projects through the ProjectConnection nodes field")
+	}
+}
+
+func TestSecurityIncidentCreateUpdateMutation_UsesISO8601DateTime(t *testing.T) {
+	if !strings.Contains(SecurityIncidentCreateUpdateMutation, "$occurredAt: ISO8601DateTime!") {
+		t.Fatal("SecurityIncidentCreateUpdateMutation must use the ISO8601DateTime scalar for occurredAt")
+	}
+}
+
+func TestSecurityIncidentFindingsQuery_SelectsNestedComponentContext(t *testing.T) {
+	for _, required := range []string{"findings(statuses: $statuses)", "component {", "rootSbom {", "projectVersion"} {
+		if !strings.Contains(SecurityIncidentFindingsQuery, required) {
+			t.Fatalf("SecurityIncidentFindingsQuery missing %q", required)
+		}
 	}
 }
