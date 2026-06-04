@@ -268,6 +268,14 @@ func (s *Server) registerTools() {
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
 	), s.handleListPolicyViolations)
 
+	s.mcp.AddTool(mcp.NewTool("get_ticketing_status",
+		mcp.WithDescription("Get ticketing provider connection/config status and policy application for products/repositories"),
+		mcp.WithString("product_id", mcp.Description("Optional product UUID to inspect one product/repository")),
+		mcp.WithNumber("products_limit", mcp.Description("Maximum number of products to inspect when product_id is omitted (default: 20)")),
+		mcp.WithNumber("policies_limit", mcp.Description("Maximum number of policies to inspect (default: 50)")),
+		mcp.WithNumber("ticket_links_limit", mcp.Description("Maximum number of component vulnerabilities to scan for created ticket links (default: 500)")),
+	), s.handleGetTicketingStatus)
+
 	// License tools
 	s.mcp.AddTool(mcp.NewTool("list_licenses",
 		mcp.WithDescription("List licenses used in the organization's versions"),
