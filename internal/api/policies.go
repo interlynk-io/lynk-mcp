@@ -23,13 +23,14 @@ import (
 
 // Policy represents a security policy
 type Policy struct {
-	ID          string
-	Name        string
-	Description string
-	Enabled     bool
-	ResultType  string
-	UpdatedAt   time.Time
-	PolicyRules []PolicyRule
+	ID           string
+	Name         string
+	Description  string
+	Enabled      bool
+	ResultType   string
+	CreateTicket bool
+	UpdatedAt    time.Time
+	PolicyRules  []PolicyRule
 }
 
 // PolicyRule represents a rule within a policy
@@ -91,6 +92,155 @@ type LicensesResult struct {
 	EndCursor   string
 }
 
+// TicketingStatusInput contains parameters for fetching ticketing visibility.
+type TicketingStatusInput struct {
+	ProductID     string
+	ProductsFirst int
+	PoliciesFirst int
+	TicketsFirst  int
+}
+
+// TicketingStatus contains ticketing provider configuration and policy application details.
+type TicketingStatus struct {
+	Connections              []TicketingConnectionStatus
+	JiraVulnManagementConfig *JiraVulnManagementConfig
+	Products                 []TicketingProduct
+	Policies                 []TicketingPolicy
+	CreatedTickets           []CreatedTicket
+	ProductsTotalCount       int
+	ProductsHasNextPage      bool
+	PoliciesTotalCount       int
+	PoliciesHasNextPage      bool
+	TicketsScannedCount      int
+	TicketsHasNextPage       bool
+}
+
+// TicketingConnectionStatus contains organization-level ticketing provider connection health.
+type TicketingConnectionStatus struct {
+	Provider          string
+	ConnectionID      string
+	ProviderID        string
+	Enabled           bool
+	URL               string
+	UserName          string
+	HealthCheckStatus string
+	LastHealthCheckAt time.Time
+	UpdatedAt         time.Time
+}
+
+// JiraVulnManagementConfig contains Jira vulnerability-management provisioning status.
+type JiraVulnManagementConfig struct {
+	ID                 string
+	Enabled            bool
+	ProvisioningStatus string
+	ProvisioningStep   string
+	ProvisioningErrors string
+	IssueTypeID        string
+	WorkflowID         string
+	ScreenID           string
+	UpdatedAt          time.Time
+}
+
+// TicketingProduct contains repository and environment ticketing settings for a product.
+type TicketingProduct struct {
+	ID           string
+	Name         string
+	Enabled      bool
+	Repository   *ImportedRepository
+	Environments []TicketingEnvironment
+}
+
+// ImportedRepository contains source-control repository import status for a product.
+type ImportedRepository struct {
+	Type           string
+	ID             string
+	Name           string
+	FullName       string
+	Owner          string
+	DefaultBranch  string
+	Slug           string
+	Workspace      string
+	FullPath       string
+	GitlabID       string
+	ImportStatus   string
+	WebhookEnabled bool
+}
+
+// TicketingEnvironment contains Jira sync settings for one environment.
+type TicketingEnvironment struct {
+	ID                    string
+	Name                  string
+	Enabled               bool
+	IssueTrackerSettings  []ExternalIssueTrackerSetting
+	AppliedTicketPolicies []TicketingPolicySummary
+}
+
+// ExternalIssueTrackerSetting contains per-environment issue tracker configuration.
+type ExternalIssueTrackerSetting struct {
+	ID             string
+	Provider       string
+	ProjectKey     string
+	IssueType      string
+	Assignee       string
+	Reporter       string
+	Epic           string
+	Components     interface{}
+	TeamID         string
+	StateID        string
+	EnableSync     bool
+	LastSyncedAt   time.Time
+	LastSyncStatus string
+	UpdatedAt      time.Time
+}
+
+// TicketingPolicy contains policy ticketing status and application scope.
+type TicketingPolicy struct {
+	ID           string
+	Name         string
+	Enabled      bool
+	ResultType   string
+	CreateTicket bool
+	Inclusions   []TicketingPolicyInclusion
+}
+
+// TicketingPolicySummary contains compact policy data attached to environments.
+type TicketingPolicySummary struct {
+	ID         string
+	Name       string
+	Enabled    bool
+	ResultType string
+}
+
+// TicketingPolicyInclusion contains an environment included by a policy.
+type TicketingPolicyInclusion struct {
+	EnvironmentID   string
+	EnvironmentName string
+	ProductID       string
+	ProductName     string
+}
+
+// CreatedTicket contains an issue tracker link created for a component vulnerability.
+type CreatedTicket struct {
+	ID               string
+	Provider         string
+	IssueKey         string
+	IssueURL         string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	ComponentVulnID  string
+	ComponentName    string
+	ComponentVersion string
+	VulnID           string
+	VulnerabilityID  string
+	Severity         string
+	VersionID        string
+	Version          string
+	EnvironmentID    string
+	EnvironmentName  string
+	ProductID        string
+	ProductName      string
+}
+
 // ListPoliciesInput contains parameters for listing policies
 type ListPoliciesInput struct {
 	First  int
@@ -116,12 +266,13 @@ func (c *Client) ListPolicies(ctx context.Context, input ListPoliciesInput) (*Po
 	var result struct {
 		Policies struct {
 			Nodes []struct {
-				ID          string    `json:"id"`
-				Name        string    `json:"name"`
-				Description string    `json:"description"`
-				Enabled     bool      `json:"isEnabled"`
-				ResultType  string    `json:"resultType"`
-				UpdatedAt   time.Time `json:"updatedAt"`
+				ID           string    `json:"id"`
+				Name         string    `json:"name"`
+				Description  string    `json:"description"`
+				Enabled      bool      `json:"isEnabled"`
+				ResultType   string    `json:"resultType"`
+				CreateTicket bool      `json:"createTicket"`
+				UpdatedAt    time.Time `json:"updatedAt"`
 			} `json:"nodes"`
 			TotalCount int `json:"totalCount"`
 			PageInfo   struct {
@@ -138,12 +289,13 @@ func (c *Client) ListPolicies(ctx context.Context, input ListPoliciesInput) (*Po
 	policies := make([]Policy, len(result.Policies.Nodes))
 	for i, n := range result.Policies.Nodes {
 		policies[i] = Policy{
-			ID:          n.ID,
-			Name:        n.Name,
-			Description: n.Description,
-			Enabled:     n.Enabled,
-			ResultType:  n.ResultType,
-			UpdatedAt:   n.UpdatedAt,
+			ID:           n.ID,
+			Name:         n.Name,
+			Description:  n.Description,
+			Enabled:      n.Enabled,
+			ResultType:   n.ResultType,
+			CreateTicket: n.CreateTicket,
+			UpdatedAt:    n.UpdatedAt,
 		}
 	}
 
@@ -163,13 +315,14 @@ func (c *Client) GetPolicy(ctx context.Context, id string) (*Policy, error) {
 
 	var result struct {
 		Policy struct {
-			ID          string    `json:"id"`
-			Name        string    `json:"name"`
-			Description string    `json:"description"`
-			Enabled     bool      `json:"isEnabled"`
-			ResultType  string    `json:"resultType"`
-			UpdatedAt   time.Time `json:"updatedAt"`
-			PolicyRules []struct {
+			ID           string    `json:"id"`
+			Name         string    `json:"name"`
+			Description  string    `json:"description"`
+			Enabled      bool      `json:"isEnabled"`
+			ResultType   string    `json:"resultType"`
+			CreateTicket bool      `json:"createTicket"`
+			UpdatedAt    time.Time `json:"updatedAt"`
+			PolicyRules  []struct {
 				ID       string `json:"id"`
 				Name     string `json:"name"`
 				Subject  string `json:"subject"`
@@ -195,13 +348,14 @@ func (c *Client) GetPolicy(ctx context.Context, id string) (*Policy, error) {
 	}
 
 	return &Policy{
-		ID:          result.Policy.ID,
-		Name:        result.Policy.Name,
-		Description: result.Policy.Description,
-		Enabled:     result.Policy.Enabled,
-		ResultType:  result.Policy.ResultType,
-		UpdatedAt:   result.Policy.UpdatedAt,
-		PolicyRules: rules,
+		ID:           result.Policy.ID,
+		Name:         result.Policy.Name,
+		Description:  result.Policy.Description,
+		Enabled:      result.Policy.Enabled,
+		ResultType:   result.Policy.ResultType,
+		CreateTicket: result.Policy.CreateTicket,
+		UpdatedAt:    result.Policy.UpdatedAt,
+		PolicyRules:  rules,
 	}, nil
 }
 
@@ -304,6 +458,423 @@ func (c *Client) ListPolicyResults(ctx context.Context, input ListPolicyResultsI
 		HasNextPage:   result.PolicyResults.PageInfo.HasNextPage,
 		EndCursor:     result.PolicyResults.PageInfo.EndCursor,
 	}, nil
+}
+
+// GetTicketingStatus fetches Jira and ticketing policy application status.
+func (c *Client) GetTicketingStatus(ctx context.Context, input TicketingStatusInput) (*TicketingStatus, error) {
+	vars := map[string]interface{}{
+		"policiesFirst": defaultPositive(input.PoliciesFirst, 50),
+		"ticketsFirst":  defaultPositive(input.TicketsFirst, 500),
+	}
+	query := graphql.TicketingStatusQuery
+	if input.ProductID != "" {
+		query = graphql.ProductTicketingStatusQuery
+		vars["productId"] = input.ProductID
+	} else {
+		vars["productsFirst"] = defaultPositive(input.ProductsFirst, 20)
+	}
+
+	var result struct {
+		Organization struct {
+			Connections struct {
+				Nodes []ticketingConnectionNode `json:"nodes"`
+			} `json:"connections"`
+			ProjectGroups struct {
+				Nodes      []ticketingProductNode `json:"nodes"`
+				TotalCount int                    `json:"totalCount"`
+				PageInfo   struct {
+					HasNextPage bool `json:"hasNextPage"`
+				} `json:"pageInfo"`
+			} `json:"projectGroups"`
+		} `json:"organization"`
+		JiraVulnManagementConfig *ticketingJiraConfigNode `json:"jiraVulnManagementConfig"`
+		ProjectGroup             *ticketingProductNode    `json:"projectGroup"`
+		ComponentVulns           ticketingComponentVulns  `json:"componentVulns"`
+		Policies                 struct {
+			Nodes      []ticketingPolicyNode `json:"nodes"`
+			TotalCount int                   `json:"totalCount"`
+			PageInfo   struct {
+				HasNextPage bool `json:"hasNextPage"`
+			} `json:"pageInfo"`
+		} `json:"policies"`
+	}
+
+	if err := c.gql.Execute(ctx, query, vars, &result); err != nil {
+		return nil, err
+	}
+
+	status := &TicketingStatus{
+		Connections:         mapTicketingConnections(result.Organization.Connections.Nodes),
+		ProductsTotalCount:  result.Organization.ProjectGroups.TotalCount,
+		ProductsHasNextPage: result.Organization.ProjectGroups.PageInfo.HasNextPage,
+		PoliciesTotalCount:  result.Policies.TotalCount,
+		PoliciesHasNextPage: result.Policies.PageInfo.HasNextPage,
+	}
+	if result.JiraVulnManagementConfig != nil {
+		status.JiraVulnManagementConfig = mapJiraConfig(*result.JiraVulnManagementConfig)
+	}
+
+	productNodes := result.Organization.ProjectGroups.Nodes
+	if input.ProductID != "" && result.ProjectGroup != nil {
+		productNodes = []ticketingProductNode{*result.ProjectGroup}
+		status.ProductsTotalCount = len(productNodes)
+		status.ProductsHasNextPage = false
+		status.CreatedTickets = mapCreatedTickets(result.ProjectGroup.ComponentVulns.Nodes)
+		status.TicketsScannedCount = result.ProjectGroup.ComponentVulns.TotalCount
+		status.TicketsHasNextPage = result.ProjectGroup.ComponentVulns.PageInfo.HasNextPage
+	} else {
+		status.CreatedTickets = mapCreatedTickets(result.ComponentVulns.Nodes)
+		status.TicketsScannedCount = result.ComponentVulns.TotalCount
+		status.TicketsHasNextPage = result.ComponentVulns.PageInfo.HasNextPage
+	}
+
+	productIDs := make(map[string]bool, len(productNodes))
+	environmentPolicies := make(map[string][]TicketingPolicySummary)
+	for _, product := range productNodes {
+		productIDs[product.ID] = true
+	}
+
+	status.Policies = mapTicketingPolicies(result.Policies.Nodes, productIDs, input.ProductID != "", environmentPolicies)
+	status.Products = mapTicketingProducts(productNodes, environmentPolicies)
+
+	return status, nil
+}
+
+type ticketingConnectionNode struct {
+	ID         string    `json:"id"`
+	Enabled    bool      `json:"enabled"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+	Connection struct {
+		Type              string    `json:"__typename"`
+		ID                string    `json:"id"`
+		URL               string    `json:"url"`
+		UserName          string    `json:"userName"`
+		HealthCheckStatus string    `json:"healthCheckStatus"`
+		LastHealthCheckAt time.Time `json:"lastHealthCheckAt"`
+		UpdatedAt         time.Time `json:"updatedAt"`
+	} `json:"connection"`
+}
+
+type ticketingJiraConfigNode struct {
+	ID                 string    `json:"id"`
+	Enabled            bool      `json:"enabled"`
+	ProvisioningStatus string    `json:"provisioningStatus"`
+	ProvisioningStep   string    `json:"provisioningStep"`
+	ProvisioningErrors string    `json:"provisioningErrors"`
+	IssueTypeID        string    `json:"issueTypeId"`
+	WorkflowID         string    `json:"workflowId"`
+	ScreenID           string    `json:"screenId"`
+	UpdatedAt          time.Time `json:"updatedAt"`
+}
+
+type ticketingProductNode struct {
+	ID                 string                   `json:"id"`
+	Name               string                   `json:"name"`
+	Enabled            bool                     `json:"enabled"`
+	ImportedRepository *ticketingRepositoryNode `json:"importedRepository"`
+	Projects           struct {
+		Nodes []ticketingEnvironmentNode `json:"nodes"`
+	} `json:"projects"`
+	ComponentVulns ticketingComponentVulns `json:"componentVulns"`
+}
+
+type ticketingComponentVulns struct {
+	Nodes      []ticketingComponentVulnNode `json:"nodes"`
+	TotalCount int                          `json:"totalCount"`
+	PageInfo   struct {
+		HasNextPage bool `json:"hasNextPage"`
+	} `json:"pageInfo"`
+}
+
+type ticketingComponentVulnNode struct {
+	ID        string `json:"id"`
+	Component *struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+		SbomID  string `json:"sbomId"`
+		Sbom    *struct {
+			ID             string `json:"id"`
+			ProjectVersion string `json:"projectVersion"`
+			Project        *struct {
+				ID           string `json:"id"`
+				Name         string `json:"name"`
+				ProjectGroup *struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"projectGroup"`
+			} `json:"project"`
+		} `json:"sbom"`
+	} `json:"component"`
+	Vuln *struct {
+		ID     string `json:"id"`
+		VulnID string `json:"vulnId"`
+		Sev    string `json:"sev"`
+	} `json:"vuln"`
+	ExternalIssueTrackerLinks []struct {
+		ID        string    `json:"id"`
+		Provider  string    `json:"provider"`
+		IssueKey  string    `json:"issueKey"`
+		IssueURL  string    `json:"issueUrl"`
+		CreatedAt time.Time `json:"createdAt"`
+		UpdatedAt time.Time `json:"updatedAt"`
+	} `json:"externalIssueTrackerLinks"`
+}
+
+type ticketingRepositoryNode struct {
+	Type           string `json:"__typename"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	FullName       string `json:"fullName"`
+	Owner          string `json:"owner"`
+	DefaultBranch  string `json:"defaultBranch"`
+	Slug           string `json:"slug"`
+	Workspace      string `json:"workspace"`
+	FullPath       string `json:"fullPath"`
+	GitlabID       string `json:"gitlabId"`
+	ImportStatus   string `json:"importStatus"`
+	WebhookEnabled bool   `json:"webhookEnabled"`
+}
+
+type ticketingEnvironmentNode struct {
+	ID                           string `json:"id"`
+	Name                         string `json:"name"`
+	Enabled                      bool   `json:"enabled"`
+	ExternalIssueTrackerSettings []struct {
+		ID             string      `json:"id"`
+		Provider       string      `json:"provider"`
+		ProjectKey     string      `json:"projectKey"`
+		IssueType      string      `json:"issueType"`
+		Assignee       string      `json:"assignee"`
+		Reporter       string      `json:"reporter"`
+		Epic           string      `json:"epic"`
+		Components     interface{} `json:"components"`
+		TeamID         string      `json:"teamId"`
+		StateID        string      `json:"stateId"`
+		EnableJiraSync bool        `json:"enableJiraSync"`
+		LastSyncedAt   time.Time   `json:"lastSyncedAt"`
+		LastSyncStatus string      `json:"lastSyncStatus"`
+		UpdatedAt      time.Time   `json:"updatedAt"`
+	} `json:"externalIssueTrackerSettings"`
+}
+
+type ticketingPolicyNode struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Enabled          bool   `json:"isEnabled"`
+	ResultType       string `json:"resultType"`
+	CreateTicket     bool   `json:"createTicket"`
+	PolicyInclusions []struct {
+		ProjectID string `json:"projectId"`
+		Project   struct {
+			ID           string `json:"id"`
+			Name         string `json:"name"`
+			ProjectGroup struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"projectGroup"`
+		} `json:"project"`
+	} `json:"policyInclusions"`
+}
+
+func defaultPositive(value, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	return fallback
+}
+
+func mapTicketingConnections(nodes []ticketingConnectionNode) []TicketingConnectionStatus {
+	connections := make([]TicketingConnectionStatus, 0, len(nodes))
+	for _, node := range nodes {
+		provider := ticketingProviderFromType(node.Connection.Type)
+		if provider == "" {
+			continue
+		}
+		connections = append(connections, TicketingConnectionStatus{
+			Provider:          provider,
+			ConnectionID:      node.ID,
+			ProviderID:        node.Connection.ID,
+			Enabled:           node.Enabled,
+			URL:               node.Connection.URL,
+			UserName:          node.Connection.UserName,
+			HealthCheckStatus: node.Connection.HealthCheckStatus,
+			LastHealthCheckAt: node.Connection.LastHealthCheckAt,
+			UpdatedAt:         node.Connection.UpdatedAt,
+		})
+	}
+	return connections
+}
+
+func ticketingProviderFromType(typeName string) string {
+	switch typeName {
+	case "JiraConnection":
+		return "jira"
+	case "LinearConnection":
+		return "linear"
+	default:
+		return ""
+	}
+}
+
+func mapJiraConfig(node ticketingJiraConfigNode) *JiraVulnManagementConfig {
+	return &JiraVulnManagementConfig{
+		ID:                 node.ID,
+		Enabled:            node.Enabled,
+		ProvisioningStatus: node.ProvisioningStatus,
+		ProvisioningStep:   node.ProvisioningStep,
+		ProvisioningErrors: node.ProvisioningErrors,
+		IssueTypeID:        node.IssueTypeID,
+		WorkflowID:         node.WorkflowID,
+		ScreenID:           node.ScreenID,
+		UpdatedAt:          node.UpdatedAt,
+	}
+}
+
+func mapTicketingPolicies(nodes []ticketingPolicyNode, productIDs map[string]bool, filterByProduct bool, environmentPolicies map[string][]TicketingPolicySummary) []TicketingPolicy {
+	policies := make([]TicketingPolicy, 0, len(nodes))
+	for _, node := range nodes {
+		policy := TicketingPolicy{
+			ID:           node.ID,
+			Name:         node.Name,
+			Enabled:      node.Enabled,
+			ResultType:   node.ResultType,
+			CreateTicket: node.CreateTicket,
+		}
+		summary := TicketingPolicySummary{
+			ID:         node.ID,
+			Name:       node.Name,
+			Enabled:    node.Enabled,
+			ResultType: node.ResultType,
+		}
+
+		for _, inclusion := range node.PolicyInclusions {
+			productID := inclusion.Project.ProjectGroup.ID
+			if filterByProduct && !productIDs[productID] {
+				continue
+			}
+
+			policy.Inclusions = append(policy.Inclusions, TicketingPolicyInclusion{
+				EnvironmentID:   inclusion.ProjectID,
+				EnvironmentName: inclusion.Project.Name,
+				ProductID:       productID,
+				ProductName:     inclusion.Project.ProjectGroup.Name,
+			})
+			if node.CreateTicket {
+				environmentPolicies[inclusion.ProjectID] = append(environmentPolicies[inclusion.ProjectID], summary)
+			}
+		}
+
+		if !filterByProduct || len(policy.Inclusions) > 0 {
+			policies = append(policies, policy)
+		}
+	}
+	return policies
+}
+
+func mapTicketingProducts(nodes []ticketingProductNode, environmentPolicies map[string][]TicketingPolicySummary) []TicketingProduct {
+	products := make([]TicketingProduct, len(nodes))
+	for i, node := range nodes {
+		product := TicketingProduct{
+			ID:      node.ID,
+			Name:    node.Name,
+			Enabled: node.Enabled,
+		}
+		if node.ImportedRepository != nil {
+			product.Repository = &ImportedRepository{
+				Type:           node.ImportedRepository.Type,
+				ID:             node.ImportedRepository.ID,
+				Name:           node.ImportedRepository.Name,
+				FullName:       node.ImportedRepository.FullName,
+				Owner:          node.ImportedRepository.Owner,
+				DefaultBranch:  node.ImportedRepository.DefaultBranch,
+				Slug:           node.ImportedRepository.Slug,
+				Workspace:      node.ImportedRepository.Workspace,
+				FullPath:       node.ImportedRepository.FullPath,
+				GitlabID:       node.ImportedRepository.GitlabID,
+				ImportStatus:   node.ImportedRepository.ImportStatus,
+				WebhookEnabled: node.ImportedRepository.WebhookEnabled,
+			}
+		}
+
+		product.Environments = make([]TicketingEnvironment, len(node.Projects.Nodes))
+		for j, envNode := range node.Projects.Nodes {
+			env := TicketingEnvironment{
+				ID:                    envNode.ID,
+				Name:                  envNode.Name,
+				Enabled:               envNode.Enabled,
+				AppliedTicketPolicies: environmentPolicies[envNode.ID],
+			}
+			for _, setting := range envNode.ExternalIssueTrackerSettings {
+				env.IssueTrackerSettings = append(env.IssueTrackerSettings, ExternalIssueTrackerSetting{
+					ID:             setting.ID,
+					Provider:       setting.Provider,
+					ProjectKey:     setting.ProjectKey,
+					IssueType:      setting.IssueType,
+					Assignee:       setting.Assignee,
+					Reporter:       setting.Reporter,
+					Epic:           setting.Epic,
+					Components:     setting.Components,
+					TeamID:         setting.TeamID,
+					StateID:        setting.StateID,
+					EnableSync:     setting.EnableJiraSync,
+					LastSyncedAt:   setting.LastSyncedAt,
+					LastSyncStatus: setting.LastSyncStatus,
+					UpdatedAt:      setting.UpdatedAt,
+				})
+			}
+			product.Environments[j] = env
+		}
+		products[i] = product
+	}
+	return products
+}
+
+func mapCreatedTickets(nodes []ticketingComponentVulnNode) []CreatedTicket {
+	tickets := []CreatedTicket{}
+	for _, node := range nodes {
+		if len(node.ExternalIssueTrackerLinks) == 0 {
+			continue
+		}
+
+		base := CreatedTicket{
+			ComponentVulnID: node.ID,
+		}
+		if node.Component != nil {
+			base.ComponentName = node.Component.Name
+			base.ComponentVersion = node.Component.Version
+			base.VersionID = node.Component.SbomID
+			if node.Component.Sbom != nil {
+				base.VersionID = node.Component.Sbom.ID
+				base.Version = node.Component.Sbom.ProjectVersion
+				if node.Component.Sbom.Project != nil {
+					base.EnvironmentID = node.Component.Sbom.Project.ID
+					base.EnvironmentName = node.Component.Sbom.Project.Name
+					if node.Component.Sbom.Project.ProjectGroup != nil {
+						base.ProductID = node.Component.Sbom.Project.ProjectGroup.ID
+						base.ProductName = node.Component.Sbom.Project.ProjectGroup.Name
+					}
+				}
+			}
+		}
+		if node.Vuln != nil {
+			base.VulnerabilityID = node.Vuln.ID
+			base.VulnID = node.Vuln.VulnID
+			base.Severity = node.Vuln.Sev
+		}
+
+		for _, link := range node.ExternalIssueTrackerLinks {
+			ticket := base
+			ticket.ID = link.ID
+			ticket.Provider = link.Provider
+			ticket.IssueKey = link.IssueKey
+			ticket.IssueURL = link.IssueURL
+			ticket.CreatedAt = link.CreatedAt
+			ticket.UpdatedAt = link.UpdatedAt
+			tickets = append(tickets, ticket)
+		}
+	}
+	return tickets
 }
 
 // ListLicensesInput contains parameters for listing licenses

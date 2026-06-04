@@ -885,12 +885,13 @@ func (s *Server) handleListPolicies(ctx context.Context, request mcp.CallToolReq
 	policies := make([]map[string]interface{}, len(result.Policies))
 	for i, p := range result.Policies {
 		policies[i] = map[string]interface{}{
-			"id":          p.ID,
-			"name":        p.Name,
-			"description": p.Description,
-			"enabled":     p.Enabled,
-			"resultType":  p.ResultType,
-			"updatedAt":   p.UpdatedAt,
+			"id":           p.ID,
+			"name":         p.Name,
+			"description":  p.Description,
+			"enabled":      p.Enabled,
+			"resultType":   p.ResultType,
+			"createTicket": p.CreateTicket,
+			"updatedAt":    p.UpdatedAt,
 		}
 	}
 
@@ -925,13 +926,14 @@ func (s *Server) handleGetPolicy(ctx context.Context, request mcp.CallToolReques
 	}
 
 	return formatResult(map[string]interface{}{
-		"id":          policy.ID,
-		"name":        policy.Name,
-		"description": policy.Description,
-		"enabled":     policy.Enabled,
-		"resultType":  policy.ResultType,
-		"updatedAt":   policy.UpdatedAt,
-		"rules":       rules,
+		"id":           policy.ID,
+		"name":         policy.Name,
+		"description":  policy.Description,
+		"enabled":      policy.Enabled,
+		"resultType":   policy.ResultType,
+		"createTicket": policy.CreateTicket,
+		"updatedAt":    policy.UpdatedAt,
+		"rules":        rules,
 	})
 }
 
@@ -984,6 +986,25 @@ func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.Cal
 	})
 }
 
+func (s *Server) handleGetTicketingStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	input := api.TicketingStatusInput{
+		ProductsFirst: getIntParam(args, "products_limit", 20),
+		PoliciesFirst: getIntParam(args, "policies_limit", 50),
+		TicketsFirst:  getIntParam(args, "ticket_links_limit", 500),
+	}
+	if productID, ok := args["product_id"].(string); ok {
+		input.ProductID = productID
+	}
+
+	status, err := s.client.GetTicketingStatus(ctx, input)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to get ticketing status: %v", err)), nil
+	}
+
+	return formatResult(formatTicketingStatus(status))
+}
+
 func (s *Server) handleListLicenses(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	input := api.ListLicensesInput{
@@ -1025,6 +1046,203 @@ func (s *Server) handleListLicenses(ctx context.Context, request mcp.CallToolReq
 }
 
 // Helper functions
+
+func formatTicketingStatus(status *api.TicketingStatus) map[string]interface{} {
+	result := map[string]interface{}{
+		"productsTotalCount":  status.ProductsTotalCount,
+		"productsHasMore":     status.ProductsHasNextPage,
+		"policiesTotalCount":  status.PoliciesTotalCount,
+		"policiesHasMore":     status.PoliciesHasNextPage,
+		"ticketsScannedCount": status.TicketsScannedCount,
+		"ticketsHasMore":      status.TicketsHasNextPage,
+	}
+
+	connections := make([]map[string]interface{}, len(status.Connections))
+	for i, connection := range status.Connections {
+		connectionData := map[string]interface{}{
+			"provider":     connection.Provider,
+			"connectionId": connection.ConnectionID,
+			"providerId":   connection.ProviderID,
+			"enabled":      connection.Enabled,
+			"url":          connection.URL,
+			"updatedAt":    connection.UpdatedAt,
+		}
+		if connection.UserName != "" {
+			connectionData["userName"] = connection.UserName
+		}
+		if connection.HealthCheckStatus != "" {
+			connectionData["healthCheckStatus"] = connection.HealthCheckStatus
+		}
+		if !connection.LastHealthCheckAt.IsZero() {
+			connectionData["lastHealthCheckAt"] = connection.LastHealthCheckAt
+		}
+		connections[i] = connectionData
+	}
+	result["ticketingConnections"] = connections
+
+	if status.JiraVulnManagementConfig != nil {
+		result["providerConfigs"] = map[string]interface{}{
+			"jiraVulnManagement": map[string]interface{}{
+				"id":                 status.JiraVulnManagementConfig.ID,
+				"enabled":            status.JiraVulnManagementConfig.Enabled,
+				"provisioningStatus": status.JiraVulnManagementConfig.ProvisioningStatus,
+				"provisioningStep":   status.JiraVulnManagementConfig.ProvisioningStep,
+				"provisioningErrors": status.JiraVulnManagementConfig.ProvisioningErrors,
+				"issueTypeId":        status.JiraVulnManagementConfig.IssueTypeID,
+				"workflowId":         status.JiraVulnManagementConfig.WorkflowID,
+				"screenId":           status.JiraVulnManagementConfig.ScreenID,
+				"updatedAt":          status.JiraVulnManagementConfig.UpdatedAt,
+			},
+		}
+	} else {
+		result["providerConfigs"] = map[string]interface{}{}
+	}
+
+	products := make([]map[string]interface{}, len(status.Products))
+	for i, product := range status.Products {
+		productData := map[string]interface{}{
+			"id":           product.ID,
+			"name":         product.Name,
+			"enabled":      product.Enabled,
+			"repository":   formatImportedRepository(product.Repository),
+			"environments": formatTicketingEnvironments(product.Environments),
+		}
+		products[i] = productData
+	}
+	result["products"] = products
+
+	policies := make([]map[string]interface{}, len(status.Policies))
+	for i, policy := range status.Policies {
+		inclusions := make([]map[string]interface{}, len(policy.Inclusions))
+		for j, inclusion := range policy.Inclusions {
+			inclusions[j] = map[string]interface{}{
+				"environmentId":   inclusion.EnvironmentID,
+				"environmentName": inclusion.EnvironmentName,
+				"productId":       inclusion.ProductID,
+				"productName":     inclusion.ProductName,
+			}
+		}
+		policies[i] = map[string]interface{}{
+			"id":           policy.ID,
+			"name":         policy.Name,
+			"enabled":      policy.Enabled,
+			"resultType":   policy.ResultType,
+			"createTicket": policy.CreateTicket,
+			"inclusions":   inclusions,
+		}
+	}
+	result["policies"] = policies
+	result["createdTickets"] = formatCreatedTickets(status.CreatedTickets)
+
+	return result
+}
+
+func formatCreatedTickets(tickets []api.CreatedTicket) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(tickets))
+	for i, ticket := range tickets {
+		result[i] = map[string]interface{}{
+			"id":               ticket.ID,
+			"provider":         ticket.Provider,
+			"issueKey":         ticket.IssueKey,
+			"issueUrl":         ticket.IssueURL,
+			"createdAt":        ticket.CreatedAt,
+			"updatedAt":        ticket.UpdatedAt,
+			"componentVulnId":  ticket.ComponentVulnID,
+			"componentName":    ticket.ComponentName,
+			"componentVersion": ticket.ComponentVersion,
+			"vulnId":           ticket.VulnID,
+			"vulnerabilityId":  ticket.VulnerabilityID,
+			"severity":         ticket.Severity,
+			"versionId":        ticket.VersionID,
+			"version":          ticket.Version,
+			"environmentId":    ticket.EnvironmentID,
+			"environmentName":  ticket.EnvironmentName,
+			"productId":        ticket.ProductID,
+			"productName":      ticket.ProductName,
+		}
+	}
+	return result
+}
+
+func formatImportedRepository(repo *api.ImportedRepository) interface{} {
+	if repo == nil {
+		return nil
+	}
+
+	data := map[string]interface{}{
+		"type":           repo.Type,
+		"id":             repo.ID,
+		"name":           repo.Name,
+		"importStatus":   repo.ImportStatus,
+		"webhookEnabled": repo.WebhookEnabled,
+	}
+	if repo.FullName != "" {
+		data["fullName"] = repo.FullName
+	}
+	if repo.Owner != "" {
+		data["owner"] = repo.Owner
+	}
+	if repo.DefaultBranch != "" {
+		data["defaultBranch"] = repo.DefaultBranch
+	}
+	if repo.Slug != "" {
+		data["slug"] = repo.Slug
+	}
+	if repo.Workspace != "" {
+		data["workspace"] = repo.Workspace
+	}
+	if repo.FullPath != "" {
+		data["fullPath"] = repo.FullPath
+	}
+	if repo.GitlabID != "" {
+		data["gitlabId"] = repo.GitlabID
+	}
+	return data
+}
+
+func formatTicketingEnvironments(environments []api.TicketingEnvironment) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(environments))
+	for i, environment := range environments {
+		settings := make([]map[string]interface{}, len(environment.IssueTrackerSettings))
+		for j, setting := range environment.IssueTrackerSettings {
+			settings[j] = map[string]interface{}{
+				"id":             setting.ID,
+				"provider":       setting.Provider,
+				"projectKey":     setting.ProjectKey,
+				"issueType":      setting.IssueType,
+				"assignee":       setting.Assignee,
+				"reporter":       setting.Reporter,
+				"epic":           setting.Epic,
+				"components":     setting.Components,
+				"teamId":         setting.TeamID,
+				"stateId":        setting.StateID,
+				"enableSync":     setting.EnableSync,
+				"lastSyncedAt":   setting.LastSyncedAt,
+				"lastSyncStatus": setting.LastSyncStatus,
+				"updatedAt":      setting.UpdatedAt,
+			}
+		}
+
+		policies := make([]map[string]interface{}, len(environment.AppliedTicketPolicies))
+		for j, policy := range environment.AppliedTicketPolicies {
+			policies[j] = map[string]interface{}{
+				"id":         policy.ID,
+				"name":       policy.Name,
+				"enabled":    policy.Enabled,
+				"resultType": policy.ResultType,
+			}
+		}
+
+		result[i] = map[string]interface{}{
+			"id":                    environment.ID,
+			"name":                  environment.Name,
+			"enabled":               environment.Enabled,
+			"issueTrackerSettings":  settings,
+			"appliedTicketPolicies": policies,
+		}
+	}
+	return result
+}
 
 // newToolResultError creates a CallToolResult with IsError set to true
 func newToolResultError(message string) *mcp.CallToolResult {

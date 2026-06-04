@@ -490,6 +490,7 @@ const (
 					description
 					isEnabled
 					resultType
+					createTicket
 					updatedAt
 				}
 				totalCount
@@ -512,6 +513,7 @@ const (
 				description
 				isEnabled
 				resultType
+				createTicket
 				updatedAt
 				policyRules {
 					id
@@ -553,6 +555,343 @@ const (
 					hasNextPage
 					hasPreviousPage
 					startCursor
+					endCursor
+				}
+			}
+		}
+	`
+
+	// TicketingStatusQuery fetches Jira configuration and ticketing policy application status.
+	TicketingStatusQuery = `
+		query GetTicketingStatus($productsFirst: Int, $policiesFirst: Int, $ticketsFirst: Int) {
+			organization {
+				connections {
+					nodes {
+						id
+						enabled
+						createdAt
+						updatedAt
+						connection {
+							__typename
+							... on JiraConnection {
+								id
+								url
+								userName
+								healthCheckStatus
+								lastHealthCheckAt
+								updatedAt
+							}
+							... on LinearConnection {
+								id
+								url
+								updatedAt
+							}
+						}
+					}
+				}
+				projectGroups(first: $productsFirst) {
+					nodes {
+						id
+						name
+						enabled
+						importedRepository {
+							__typename
+							... on GithubRepository {
+								id
+								name
+								fullName
+								owner
+								defaultBranch
+								importStatus
+								webhookEnabled
+							}
+							... on BitbucketRepository {
+								id
+								name
+								fullName
+								slug
+								workspace
+								importStatus
+								webhookEnabled
+							}
+							... on GitlabRepository {
+								id
+								name
+								fullPath
+								gitlabId
+								importStatus
+								webhookEnabled
+							}
+						}
+						projects(first: 100) {
+							nodes {
+								id
+								name
+								enabled
+								externalIssueTrackerSettings {
+									id
+									provider
+									projectKey
+									issueType
+									assignee
+									reporter
+									epic
+									components
+									teamId
+									stateId
+									enableJiraSync
+									lastSyncedAt
+									lastSyncStatus
+									updatedAt
+								}
+							}
+						}
+					}
+					totalCount
+					pageInfo {
+						hasNextPage
+						endCursor
+					}
+				}
+			}
+			jiraVulnManagementConfig {
+				id
+				enabled
+				provisioningStatus
+				provisioningStep
+				provisioningErrors
+				issueTypeId
+				workflowId
+				screenId
+				updatedAt
+			}
+			policies(first: $policiesFirst) {
+				nodes {
+					id
+					name
+					isEnabled
+					resultType
+					createTicket
+					policyInclusions {
+						projectId
+						project {
+							id
+							name
+							projectGroup {
+								id
+								name
+							}
+						}
+					}
+				}
+				totalCount
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+			}
+			componentVulns(first: $ticketsFirst) {
+				nodes {
+					id
+					component {
+						name
+						version
+						sbomId
+						sbom {
+							id
+							projectVersion
+							project {
+								id
+								name
+								projectGroup {
+									id
+									name
+								}
+							}
+						}
+					}
+					vuln {
+						id
+						vulnId
+						sev
+					}
+					externalIssueTrackerLinks {
+						id
+						provider
+						issueKey
+						issueUrl
+						createdAt
+						updatedAt
+					}
+				}
+				totalCount
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+			}
+		}
+	`
+
+	// ProductTicketingStatusQuery fetches ticketing status for one product/repository.
+	ProductTicketingStatusQuery = `
+		query GetProductTicketingStatus($productId: Uuid!, $policiesFirst: Int, $ticketsFirst: Int) {
+			organization {
+				connections {
+					nodes {
+						id
+						enabled
+						createdAt
+						updatedAt
+						connection {
+							__typename
+							... on JiraConnection {
+								id
+								url
+								userName
+								healthCheckStatus
+								lastHealthCheckAt
+								updatedAt
+							}
+							... on LinearConnection {
+								id
+								url
+								updatedAt
+							}
+						}
+					}
+				}
+			}
+			jiraVulnManagementConfig {
+				id
+				enabled
+				provisioningStatus
+				provisioningStep
+				provisioningErrors
+				issueTypeId
+				workflowId
+				screenId
+				updatedAt
+			}
+			projectGroup(id: $productId) {
+				id
+				name
+				enabled
+				importedRepository {
+					__typename
+					... on GithubRepository {
+						id
+						name
+						fullName
+						owner
+						defaultBranch
+						importStatus
+						webhookEnabled
+					}
+					... on BitbucketRepository {
+						id
+						name
+						fullName
+						slug
+						workspace
+						importStatus
+						webhookEnabled
+					}
+					... on GitlabRepository {
+						id
+						name
+						fullPath
+						gitlabId
+						importStatus
+						webhookEnabled
+					}
+				}
+				projects(first: 100) {
+					nodes {
+						id
+						name
+						enabled
+						externalIssueTrackerSettings {
+							id
+							provider
+							projectKey
+							issueType
+							assignee
+							reporter
+							epic
+							components
+							teamId
+							stateId
+							enableJiraSync
+							lastSyncedAt
+							lastSyncStatus
+							updatedAt
+						}
+					}
+				}
+				componentVulns(first: $ticketsFirst) {
+					nodes {
+						id
+						component {
+							name
+							version
+							sbomId
+							sbom {
+								id
+								projectVersion
+								project {
+									id
+									name
+									projectGroup {
+										id
+										name
+									}
+								}
+							}
+						}
+						vuln {
+							id
+							vulnId
+							sev
+						}
+						externalIssueTrackerLinks {
+							id
+							provider
+							issueKey
+							issueUrl
+							createdAt
+							updatedAt
+						}
+					}
+					totalCount
+					pageInfo {
+						hasNextPage
+						endCursor
+					}
+				}
+			}
+			policies(first: $policiesFirst) {
+				nodes {
+					id
+					name
+					isEnabled
+					resultType
+					createTicket
+					policyInclusions {
+						projectId
+						project {
+							id
+							name
+							projectGroup {
+								id
+								name
+							}
+						}
+					}
+				}
+				totalCount
+				pageInfo {
+					hasNextPage
 					endCursor
 				}
 			}
