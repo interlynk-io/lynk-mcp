@@ -300,32 +300,3 @@ func TestSuppressSecurityIncidentFinding_MapsInputsAndFinding(t *testing.T) {
 		t.Fatalf("unexpected finding: %#v", result.Finding)
 	}
 }
-
-func TestSecurityIncidentEnabledOrganizations_MapsResult(t *testing.T) {
-	gql := &fakeGraphQLExecutor{
-		pages: []string{
-			`{
-				"securityIncidentEnabledOrganizations": [
-					{
-						"id": "org-1",
-						"name": "Interlynk Inc",
-						"securityIncidentsEnabled": true
-					}
-				]
-			}`,
-		},
-	}
-	client := &Client{gql: gql}
-
-	orgs, err := client.SecurityIncidentEnabledOrganizations(context.Background())
-	if err != nil {
-		t.Fatalf("SecurityIncidentEnabledOrganizations returned error: %v", err)
-	}
-
-	if len(gql.requests) != 1 || gql.requests[0] != nil {
-		t.Fatalf("unexpected GraphQL variables: %#v", gql.requests)
-	}
-	if len(orgs) != 1 || orgs[0].ID != "org-1" || !orgs[0].SecurityIncidentsEnabled {
-		t.Fatalf("unexpected orgs: %#v", orgs)
-	}
-}

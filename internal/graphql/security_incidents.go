@@ -374,15 +374,4 @@ const (
 			}
 		}
 	`
-
-	// SecurityIncidentEnabledOrganizationsQuery lists organizations with incident scans enabled.
-	SecurityIncidentEnabledOrganizationsQuery = `
-		query SecurityIncidentEnabledOrganizations {
-			securityIncidentEnabledOrganizations {
-				id
-				name
-				securityIncidentsEnabled
-			}
-		}
-	`
 )

@@ -32,37 +32,3 @@ func TestSameVexName_NormalizesCommonInputForms(t *testing.T) {
 		}
 	}
 }
-
-func TestGetSecurityIncidentMarkerInputsCSV_ParsesRows(t *testing.T) {
-	markers, err := getSecurityIncidentMarkerInputsCSV(`marker_type,purl,component_name,component_version,github_url
-purl,pkg:npm/example@1.0.0,,,
-name_version,,example,1.0.0,https://github.com/example/repo
-,,,,`)
-	if err != nil {
-		t.Fatalf("getSecurityIncidentMarkerInputsCSV returned error: %v", err)
-	}
-
-	if len(markers) != 2 {
-		t.Fatalf("len(markers) = %d, want 2", len(markers))
-	}
-	if markers[0].MarkerType != "purl" || markers[0].Purl != "pkg:npm/example@1.0.0" {
-		t.Fatalf("unexpected first marker: %#v", markers[0])
-	}
-	if markers[1].MarkerType != "name_version" || markers[1].ComponentName != "example" || markers[1].GithubURL == "" {
-		t.Fatalf("unexpected second marker: %#v", markers[1])
-	}
-}
-
-func TestGetSecurityIncidentMarkerInputsCSV_RequiresMarkerTypeHeader(t *testing.T) {
-	_, err := getSecurityIncidentMarkerInputsCSV("purl\npkg:npm/example@1.0.0\n")
-	if err == nil {
-		t.Fatal("expected missing marker_type header error")
-	}
-}
-
-func TestGetSecurityIncidentMarkerInputsCSV_RequiresMarkerTypeValue(t *testing.T) {
-	_, err := getSecurityIncidentMarkerInputsCSV("marker_type,purl\n,pkg:npm/example@1.0.0\n")
-	if err == nil {
-		t.Fatal("expected missing marker_type value error")
-	}
-}

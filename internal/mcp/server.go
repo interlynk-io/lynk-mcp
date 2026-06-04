@@ -299,13 +299,6 @@ func (s *Server) registerTools() {
 		})),
 	), s.handleAddSecurityIncidentMarkers)
 
-	s.mcp.AddTool(mcp.NewTool("import_security_incident_markers_csv",
-		mcp.WithDescription("Import security incident markers from CSV text. Required column: marker_type. Optional columns: purl, component_name, component_version, github_url. Requires confirm=true."),
-		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to import markers")),
-		mcp.WithString("security_incident_id", mcp.Required(), mcp.Description("The UUID of the security incident")),
-		mcp.WithString("csv_content", mcp.Required(), mcp.Description("CSV text with marker_type,purl,component_name,component_version,github_url columns")),
-	), s.handleImportSecurityIncidentMarkersCSV)
-
 	s.mcp.AddTool(mcp.NewTool("withdraw_security_incident_markers",
 		mcp.WithDescription("Withdraw active markers from a security incident and resolve related active findings. Requires confirm=true."),
 		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to withdraw markers")),
@@ -368,16 +361,12 @@ func (s *Server) registerTools() {
 	), s.handleDryRunSecurityIncidentImpactScan)
 
 	s.mcp.AddTool(mcp.NewTool("get_security_incident_dry_run_result",
-		mcp.WithDescription("Get the latest dry-run impact scan result. Operator-only. Without org_id returns org summaries; with org_id returns paginated findings."),
+		mcp.WithDescription("Get the latest dry-run impact scan result. Operator-only. Poll no more than once every 2 seconds after queueing a dry run. Without org_id returns org summaries; with org_id returns paginated findings."),
 		mcp.WithString("incident_id", mcp.Required(), mcp.Description("The UUID of the security incident")),
 		mcp.WithString("org_id", mcp.Description("Organization UUID to fetch detailed dry-run findings for")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of findings to return when org_id is provided (default: 50, max: 100)")),
 		mcp.WithString("after", mcp.Description("Cursor for the next findings page")),
 	), s.handleGetSecurityIncidentDryRunResult)
-
-	s.mcp.AddTool(mcp.NewTool("security_incident_enabled_organizations",
-		mcp.WithDescription("List organizations with security incident scanning enabled. Operator-only."),
-	), s.handleSecurityIncidentEnabledOrganizations)
 
 	// Policy tools
 	s.mcp.AddTool(mcp.NewTool("list_policies",

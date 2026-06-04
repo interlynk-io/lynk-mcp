@@ -16,7 +16,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -1017,49 +1016,6 @@ func (s *Server) handleAddSecurityIncidentMarkers(ctx context.Context, request m
 	})
 }
 
-func (s *Server) handleImportSecurityIncidentMarkersCSV(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := toolArguments(request)
-	if !confirmed(args) {
-		return newToolResultError("Missing required confirmation: confirm must be true for import_security_incident_markers_csv"), nil
-	}
-
-	incidentID, ok := args["security_incident_id"].(string)
-	if !ok || incidentID == "" {
-		return newToolResultError("Missing required parameter: security_incident_id"), nil
-	}
-	csvContent, ok := args["csv_content"].(string)
-	if !ok || strings.TrimSpace(csvContent) == "" {
-		return newToolResultError("Missing required parameter: csv_content"), nil
-	}
-
-	markers, err := getSecurityIncidentMarkerInputsCSV(csvContent)
-	if err != nil {
-		return newToolResultError(err.Error()), nil
-	}
-	if len(markers) == 0 {
-		return newToolResultError("CSV did not contain any marker rows"), nil
-	}
-
-	result, err := s.client.AddSecurityIncidentMarkers(ctx, incidentID, markers)
-	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to import security incident markers from CSV: %v", err)), nil
-	}
-	if len(result.Errors) > 0 {
-		return newToolResultError(fmt.Sprintf("Failed to import security incident markers from CSV: %s", strings.Join(result.Errors, "; "))), nil
-	}
-
-	formatted := make([]map[string]interface{}, len(result.Markers))
-	for i := range result.Markers {
-		formatted[i] = formatSecurityIncidentMarker(&result.Markers[i])
-	}
-
-	return formatResult(map[string]interface{}{
-		"markers":      formatted,
-		"totalCount":   len(formatted),
-		"scanBehavior": "CSV rows were parsed locally and submitted through addSecurityIncidentMarkers; active/resolved incidents queue impact scanning for added markers.",
-	})
-}
-
 func (s *Server) handleWithdrawSecurityIncidentMarkers(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	if !confirmed(args) {
@@ -1257,7 +1213,7 @@ func (s *Server) handleDryRunSecurityIncidentImpactScan(ctx context.Context, req
 
 	return formatResult(map[string]interface{}{
 		"status":       result.Status,
-		"scanBehavior": "Dry-run impact scanning was queued; poll get_security_incident_dry_run_result for status and findings.",
+		"scanBehavior": "Dry-run impact scanning was queued; poll get_security_incident_dry_run_result for status and findings no more than once every 2 seconds.",
 	})
 }
 
@@ -1291,27 +1247,6 @@ func (s *Server) handleGetSecurityIncidentDryRunResult(ctx context.Context, requ
 	}
 
 	return formatResult(formatSecurityIncidentDryRunResult(result))
-}
-
-func (s *Server) handleSecurityIncidentEnabledOrganizations(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	organizations, err := s.client.SecurityIncidentEnabledOrganizations(ctx)
-	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to list security incident enabled organizations: %v", err)), nil
-	}
-
-	formatted := make([]map[string]interface{}, len(organizations))
-	for i := range organizations {
-		formatted[i] = map[string]interface{}{
-			"id":                       organizations[i].ID,
-			"name":                     organizations[i].Name,
-			"securityIncidentsEnabled": organizations[i].SecurityIncidentsEnabled,
-		}
-	}
-
-	return formatResult(map[string]interface{}{
-		"organizations": formatted,
-		"totalCount":    len(formatted),
-	})
 }
 
 func (s *Server) handleSecurityIncidentMutation(
@@ -1823,64 +1758,6 @@ func getSecurityIncidentMarkerInputsParam(args map[string]interface{}, key strin
 		result = append(result, input)
 	}
 	return result, nil
-}
-
-func getSecurityIncidentMarkerInputsCSV(csvContent string) ([]api.SecurityIncidentMarkerInput, error) {
-	reader := csv.NewReader(strings.NewReader(csvContent))
-	reader.TrimLeadingSpace = true
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("csv_content is invalid: %w", err)
-	}
-	if len(records) == 0 {
-		return nil, fmt.Errorf("csv_content requires a header row")
-	}
-
-	headers := make(map[string]int, len(records[0]))
-	for i, header := range records[0] {
-		headers[strings.TrimSpace(header)] = i
-	}
-	if _, ok := headers["marker_type"]; !ok {
-		return nil, fmt.Errorf("csv_content missing required column: marker_type")
-	}
-
-	result := make([]api.SecurityIncidentMarkerInput, 0, len(records)-1)
-	for i, row := range records[1:] {
-		if csvRowBlank(row) {
-			continue
-		}
-
-		markerType := csvColumnValue(headers, row, "marker_type")
-		if markerType == "" {
-			return nil, fmt.Errorf("csv row %d requires marker_type", i+2)
-		}
-
-		result = append(result, api.SecurityIncidentMarkerInput{
-			MarkerType:       markerType,
-			Purl:             csvColumnValue(headers, row, "purl"),
-			ComponentName:    csvColumnValue(headers, row, "component_name"),
-			ComponentVersion: csvColumnValue(headers, row, "component_version"),
-			GithubURL:        csvColumnValue(headers, row, "github_url"),
-		})
-	}
-	return result, nil
-}
-
-func csvColumnValue(headers map[string]int, row []string, key string) string {
-	index, ok := headers[key]
-	if !ok || index >= len(row) {
-		return ""
-	}
-	return strings.TrimSpace(row[index])
-}
-
-func csvRowBlank(row []string) bool {
-	for _, value := range row {
-		if strings.TrimSpace(value) != "" {
-			return false
-		}
-	}
-	return true
 }
 
 func formatSecurityIncident(incident *api.SecurityIncident) map[string]interface{} {

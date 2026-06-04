@@ -220,13 +220,6 @@ type SuppressSecurityIncidentFindingResult struct {
 	Errors  []string
 }
 
-// SecurityIncidentEnabledOrganization represents an organization with incident scans enabled.
-type SecurityIncidentEnabledOrganization struct {
-	ID                       string
-	Name                     string
-	SecurityIncidentsEnabled bool
-}
-
 // DryRunSecurityIncidentImpactScanResult contains a dry-run scan queue result.
 type DryRunSecurityIncidentImpactScanResult struct {
 	Status string
@@ -665,31 +658,6 @@ func (c *Client) GetSecurityIncidentDryRunResult(ctx context.Context, input Secu
 
 	mapped := mapSecurityIncidentDryRunResult(result.SecurityIncidentDryRunResult)
 	return &mapped, nil
-}
-
-// SecurityIncidentEnabledOrganizations lists organizations with incident scans enabled.
-func (c *Client) SecurityIncidentEnabledOrganizations(ctx context.Context) ([]SecurityIncidentEnabledOrganization, error) {
-	var result struct {
-		Organizations []struct {
-			ID                       string `json:"id"`
-			Name                     string `json:"name"`
-			SecurityIncidentsEnabled bool   `json:"securityIncidentsEnabled"`
-		} `json:"securityIncidentEnabledOrganizations"`
-	}
-
-	if err := c.gql.Execute(ctx, graphql.SecurityIncidentEnabledOrganizationsQuery, nil, &result); err != nil {
-		return nil, err
-	}
-
-	organizations := make([]SecurityIncidentEnabledOrganization, len(result.Organizations))
-	for i, org := range result.Organizations {
-		organizations[i] = SecurityIncidentEnabledOrganization{
-			ID:                       org.ID,
-			Name:                     org.Name,
-			SecurityIncidentsEnabled: org.SecurityIncidentsEnabled,
-		}
-	}
-	return organizations, nil
 }
 
 func (c *Client) securityIncidentMutation(ctx context.Context, query, fieldName, id string) (*SecurityIncidentMutationResult, error) {
