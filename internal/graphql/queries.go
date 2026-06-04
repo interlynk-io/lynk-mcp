@@ -327,9 +327,9 @@ const (
 
 	// SbomVulnsQuery fetches vulnerabilities for an SBOM
 	SbomVulnsQuery = `
-		query GetSbomVulns($sbomId: Uuid!, $first: Int, $after: String, $severity: [String!], $status: [String!], $kev: Boolean, $search: String) {
+		query GetSbomVulns($sbomId: Uuid!, $first: Int, $after: String, $severity: [String!], $status: [String!], $kev: Boolean, $epss: RangeInput, $search: String) {
 			sbom(sbomId: $sbomId) {
-				vulns(sbomId: $sbomId, first: $first, after: $after, severity: $severity, status: $status, kev: $kev, search: $search) {
+				vulns(sbomId: $sbomId, first: $first, after: $after, severity: $severity, status: $status, kev: $kev, epss: $epss, search: $search) {
 					nodes {
 						id
 						componentId
@@ -433,8 +433,8 @@ const (
 
 	// ComponentVulnsQuery fetches component vulnerabilities with filters
 	ComponentVulnsQuery = `
-		query GetComponentVulns($first: Int, $after: String, $severity: [String!], $status: [String!], $kev: Boolean, $search: String, $projectIds: [Uuid!], $projectGroupIds: [Uuid!]) {
-			componentVulns(first: $first, after: $after, severity: $severity, status: $status, kev: $kev, search: $search, projectIds: $projectIds, projectGroupIds: $projectGroupIds) {
+		query GetComponentVulns($first: Int, $after: String, $severity: [String!], $status: [String!], $kev: Boolean, $epss: RangeInput, $search: String, $projectIds: [Uuid!], $projectGroupIds: [Uuid!]) {
+			componentVulns(first: $first, after: $after, severity: $severity, status: $status, kev: $kev, epss: $epss, search: $search, projectIds: $projectIds, projectGroupIds: $projectGroupIds) {
 				nodes {
 					id
 					componentId

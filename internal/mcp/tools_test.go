@@ -14,7 +14,12 @@
 
 package mcp
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+
+	"github.com/interlynk-io/lynk-mcp/internal/api"
+)
 
 func TestSameVexName_NormalizesCommonInputForms(t *testing.T) {
 	tests := []struct {
@@ -30,5 +35,66 @@ func TestSameVexName_NormalizesCommonInputForms(t *testing.T) {
 		if !sameVexName(tt.left, tt.right) {
 			t.Fatalf("sameVexName(%q, %q) = false, want true", tt.left, tt.right)
 		}
+	}
+}
+
+func TestGetVulnerabilityMetadataFilters_ExceptionalShortcut(t *testing.T) {
+	filters := getVulnerabilityMetadataFilters(map[string]interface{}{
+		"exceptional": true,
+	})
+
+	if !filters.MatchAny || !filters.Exceptional {
+		t.Fatalf("shortcut flags = MatchAny:%t Exceptional:%t, want both true", filters.MatchAny, filters.Exceptional)
+	}
+	if filters.Kev == nil || !*filters.Kev {
+		t.Fatalf("Kev = %#v, want true", filters.Kev)
+	}
+	if filters.EpssMin == nil || *filters.EpssMin != 0.05 {
+		t.Fatalf("EpssMin = %#v, want 0.05", filters.EpssMin)
+	}
+	if filters.CvssMin == nil || *filters.CvssMin != 9.0 {
+		t.Fatalf("CvssMin = %#v, want 9.0", filters.CvssMin)
+	}
+}
+
+func TestComponentVulnMatchReasons_ReportsMatchingExceptionalMetadata(t *testing.T) {
+	epssMin := 0.05
+	cvssMin := 9.0
+	kev := true
+	filters := vulnerabilityMetadataFilters{
+		EpssMin: &epssMin,
+		CvssMin: &cvssMin,
+		Kev:     &kev,
+	}
+	vuln := api.ComponentVuln{
+		ID: "component-vuln-1",
+		Vuln: &api.Vuln{
+			CvssScore: 9.8,
+			VulnInfo: &api.VulnInfo{
+				EpssScore: 0.07,
+				Kev:       true,
+			},
+		},
+	}
+
+	reasons := componentVulnMatchReasons(vuln, filters)
+
+	if !reflect.DeepEqual(reasons, []string{"kev", "epss", "cvss"}) {
+		t.Fatalf("reasons = %#v, want kev, epss, cvss", reasons)
+	}
+}
+
+func TestFilterComponentVulnsByCvss_AppliesThresholds(t *testing.T) {
+	cvssMin := 9.0
+	filters := vulnerabilityMetadataFilters{CvssMin: &cvssMin}
+	vulns := []api.ComponentVuln{
+		{ID: "low", Vuln: &api.Vuln{CvssScore: 8.9}},
+		{ID: "high", Vuln: &api.Vuln{CvssScore: 9.0}},
+	}
+
+	filtered := filterComponentVulnsByCvss(vulns, filters)
+
+	if len(filtered) != 1 || filtered[0].ID != "high" {
+		t.Fatalf("filtered = %#v, want only high", filtered)
 	}
 }
