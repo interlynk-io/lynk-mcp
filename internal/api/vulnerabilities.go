@@ -146,15 +146,15 @@ func (c *Client) ListVersionVulns(ctx context.Context, input ListVersionVulnsInp
 						Purl    string `json:"purl"`
 					} `json:"component"`
 					Vuln *struct {
-						ID             string    `json:"id"`
-						VulnID         string    `json:"vulnId"`
-						Desc           string    `json:"desc"`
-						Sev            string    `json:"sev"`
-						CvssScore      float64   `json:"cvssScore"`
-						CvssVector     string    `json:"cvssVector"`
-						Source         string    `json:"source"`
-						PublishedAt    time.Time `json:"publishedAt"`
-						LastModifiedAt time.Time `json:"lastModifiedAt"`
+						ID             string               `json:"id"`
+						VulnID         string               `json:"vulnId"`
+						Desc           string               `json:"desc"`
+						Sev            string               `json:"sev"`
+						CvssScore      float64              `json:"cvssScore"`
+						CvssVector     string               `json:"cvssVector"`
+						Source         string               `json:"source"`
+						PublishedAt    graphql.FlexibleTime `json:"publishedAt"`
+						LastModifiedAt graphql.FlexibleTime `json:"lastModifiedAt"`
 						VulnInfo       *struct {
 							CveID          string   `json:"cveId"`
 							EpssScore      float64  `json:"epssScore"`
@@ -217,8 +217,8 @@ func (c *Client) ListVersionVulns(ctx context.Context, input ListVersionVulnsInp
 				CvssScore:      n.Vuln.CvssScore,
 				CvssVector:     n.Vuln.CvssVector,
 				Source:         n.Vuln.Source,
-				PublishedAt:    n.Vuln.PublishedAt,
-				LastModifiedAt: n.Vuln.LastModifiedAt,
+				PublishedAt:    n.Vuln.PublishedAt.Time,
+				LastModifiedAt: n.Vuln.LastModifiedAt.Time,
 			}
 			if n.Vuln.VulnInfo != nil {
 				cv.Vuln.VulnInfo = &VulnInfo{
@@ -276,16 +276,16 @@ func (c *Client) lookupByUUID(ctx context.Context, id string) (*Vuln, error) {
 
 	var result struct {
 		Vuln struct {
-			ID             string    `json:"id"`
-			VulnID         string    `json:"vulnId"`
-			Desc           string    `json:"desc"`
-			Sev            string    `json:"sev"`
-			CvssScore      float64   `json:"cvssScore"`
-			CvssVector     string    `json:"cvssVector"`
-			Source         string    `json:"source"`
-			PublishedAt    time.Time `json:"publishedAt"`
-			LastModifiedAt time.Time `json:"lastModifiedAt"`
-			UpdatedAt      time.Time `json:"updatedAt"`
+			ID             string               `json:"id"`
+			VulnID         string               `json:"vulnId"`
+			Desc           string               `json:"desc"`
+			Sev            string               `json:"sev"`
+			CvssScore      float64              `json:"cvssScore"`
+			CvssVector     string               `json:"cvssVector"`
+			Source         string               `json:"source"`
+			PublishedAt    graphql.FlexibleTime `json:"publishedAt"`
+			LastModifiedAt graphql.FlexibleTime `json:"lastModifiedAt"`
+			UpdatedAt      time.Time            `json:"updatedAt"`
 			VulnInfo       *struct {
 				ID             string   `json:"id"`
 				CveID          string   `json:"cveId"`
@@ -310,8 +310,8 @@ func (c *Client) lookupByUUID(ctx context.Context, id string) (*Vuln, error) {
 		CvssScore:      result.Vuln.CvssScore,
 		CvssVector:     result.Vuln.CvssVector,
 		Source:         result.Vuln.Source,
-		PublishedAt:    result.Vuln.PublishedAt,
-		LastModifiedAt: result.Vuln.LastModifiedAt,
+		PublishedAt:    result.Vuln.PublishedAt.Time,
+		LastModifiedAt: result.Vuln.LastModifiedAt.Time,
 		UpdatedAt:      result.Vuln.UpdatedAt,
 	}
 
@@ -338,15 +338,15 @@ func (c *Client) lookupByCveID(ctx context.Context, vulnID string) (*Vuln, error
 
 	var result struct {
 		CveLookup *struct {
-			VulnID       string    `json:"vulnId"`
-			Description  string    `json:"description"`
-			Severity     string    `json:"severity"`
-			Published    time.Time `json:"published"`
-			LastModified time.Time `json:"lastModified"`
-			CvssScore    float64   `json:"cvssScore"`
-			CvssVector   string    `json:"cvssVector"`
-			Cwes         []string  `json:"cwes"`
-			Advisories   []string  `json:"advisories"`
+			VulnID       string               `json:"vulnId"`
+			Description  string               `json:"description"`
+			Severity     string               `json:"severity"`
+			Published    graphql.FlexibleTime `json:"published"`
+			LastModified graphql.FlexibleTime `json:"lastModified"`
+			CvssScore    float64              `json:"cvssScore"`
+			CvssVector   string               `json:"cvssVector"`
+			Cwes         []string             `json:"cwes"`
+			Advisories   []string             `json:"advisories"`
 		} `json:"cveLookup"`
 	}
 
@@ -364,8 +364,8 @@ func (c *Client) lookupByCveID(ctx context.Context, vulnID string) (*Vuln, error
 		Severity:       result.CveLookup.Severity,
 		CvssScore:      result.CveLookup.CvssScore,
 		CvssVector:     result.CveLookup.CvssVector,
-		PublishedAt:    result.CveLookup.Published,
-		LastModifiedAt: result.CveLookup.LastModified,
+		PublishedAt:    result.CveLookup.Published.Time,
+		LastModifiedAt: result.CveLookup.LastModified.Time,
 		VulnInfo: &VulnInfo{
 			Cwes:       result.CveLookup.Cwes,
 			Advisories: result.CveLookup.Advisories,
