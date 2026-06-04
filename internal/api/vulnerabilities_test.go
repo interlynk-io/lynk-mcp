@@ -122,6 +122,90 @@ func TestListVersionVulns_AcceptsNestedVulnTimestampsWithoutTimezone(t *testing.
 	}
 }
 
+func TestListVersionVulns_SendsEpssRangeFilter(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"sbom": {
+					"vulns": {
+						"nodes": [],
+						"totalCount": 0,
+						"pageInfo": {
+							"hasNextPage": false,
+							"endCursor": ""
+						}
+					}
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+	epssMin := 0.05
+
+	_, err := client.ListVersionVulns(context.Background(), ListVersionVulnsInput{
+		VersionID: "version-1",
+		EpssMin:   &epssMin,
+	})
+	if err != nil {
+		t.Fatalf("ListVersionVulns returned error: %v", err)
+	}
+
+	epss, ok := gql.requests[0]["epss"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("epss variable = %#v, want range map", gql.requests[0]["epss"])
+	}
+	if epss["min"] != 0.05 || epss["max"] != 1.0 {
+		t.Fatalf("epss variable = %#v, want min 0.05 max 1.0", epss)
+	}
+}
+
+func TestListComponentVulns_SendsMetadataAndScopeFilters(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"componentVulns": {
+					"nodes": [],
+					"totalCount": 0,
+					"pageInfo": {
+						"hasNextPage": false,
+						"endCursor": ""
+					}
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+	epssMax := 0.2
+	kev := true
+
+	_, err := client.ListComponentVulns(context.Background(), ListComponentVulnsInput{
+		EpssMax:        &epssMax,
+		Kev:            &kev,
+		ProductIDs:     []string{"product-1"},
+		EnvironmentIDs: []string{"environment-1"},
+	})
+	if err != nil {
+		t.Fatalf("ListComponentVulns returned error: %v", err)
+	}
+
+	epss, ok := gql.requests[0]["epss"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("epss variable = %#v, want range map", gql.requests[0]["epss"])
+	}
+	if epss["min"] != 0.0 || epss["max"] != 0.2 {
+		t.Fatalf("epss variable = %#v, want min 0.0 max 0.2", epss)
+	}
+	if gql.requests[0]["kev"] != true {
+		t.Fatalf("kev variable = %#v, want true", gql.requests[0]["kev"])
+	}
+	if got := gql.requests[0]["projectGroupIds"]; !stringSlicesEqual(got, []string{"product-1"}) {
+		t.Fatalf("projectGroupIds = %#v, want product-1", got)
+	}
+	if got := gql.requests[0]["projectIds"]; !stringSlicesEqual(got, []string{"environment-1"}) {
+		t.Fatalf("projectIds = %#v, want environment-1", got)
+	}
+}
+
 func TestGetVexStatuses(t *testing.T) {
 	gql := &fakeGraphQLExecutor{
 		pages: []string{
@@ -146,6 +230,19 @@ func TestGetVexStatuses(t *testing.T) {
 	if statuses[1].ID != "status-2" || statuses[1].Name != "not_affected" {
 		t.Fatalf("unexpected statuses: %#v", statuses)
 	}
+}
+
+func stringSlicesEqual(got interface{}, want []string) bool {
+	gotStrings, ok := got.([]string)
+	if !ok || len(gotStrings) != len(want) {
+		return false
+	}
+	for i := range want {
+		if gotStrings[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestGetVexJustifications(t *testing.T) {

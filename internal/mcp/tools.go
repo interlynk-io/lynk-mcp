@@ -587,6 +587,7 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 		return newToolResultError("Missing required parameter: version_id"), nil
 	}
 
+	filters := getVulnerabilityMetadataFilters(args)
 	input := api.ListVersionVulnsInput{
 		VersionID: versionID,
 		First:     getIntParam(args, "limit", 50),
@@ -600,61 +601,39 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 	if kev, ok := args["kev"].(bool); ok {
 		input.Kev = &kev
 	}
+	input.EpssMin = filters.EpssMin
+	input.EpssMax = filters.EpssMax
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
 
-	result, err := s.client.ListVersionVulns(ctx, input)
+	var result *api.ComponentVulnsResult
+	var matchReasons map[string][]string
+	var err error
+	if filters.MatchAny {
+		result, matchReasons, err = s.listVersionVulnsAny(ctx, input, filters)
+	} else {
+		query := input
+		if filters.HasClientSideThresholds() {
+			query.First = vulnerabilityAnyQueryLimit(input.First)
+		}
+		result, err = s.client.ListVersionVulns(ctx, query)
+		if err == nil {
+			matchReasons = matchReasonsForComponentVulns(result.ComponentVulns, filters)
+			result.ComponentVulns = filterComponentVulnsByClientThresholds(result.ComponentVulns, filters)
+			if filters.HasClientSideThresholds() {
+				result.TotalCount = len(result.ComponentVulns)
+				result.ComponentVulns = limitComponentVulns(result.ComponentVulns, input.First)
+				result.HasNextPage = result.HasNextPage || result.TotalCount > len(result.ComponentVulns)
+			}
+		}
+	}
 	if err != nil {
 		return newToolResultError(fmt.Sprintf("Failed to list vulnerabilities: %v", err)), nil
 	}
 
-	vulns := make([]map[string]interface{}, len(result.ComponentVulns))
-	for i, cv := range result.ComponentVulns {
-		vuln := map[string]interface{}{
-			"id":        cv.ID,
-			"fixedIn":   cv.FixedIn,
-			"detail":    cv.Detail,
-			"updatedAt": cv.UpdatedAt,
-		}
-		if cv.Component != nil {
-			vuln["component"] = map[string]interface{}{
-				"id":      cv.Component.ID,
-				"name":    cv.Component.Name,
-				"version": cv.Component.Version,
-				"purl":    cv.Component.Purl,
-			}
-		}
-		if cv.Vuln != nil {
-			vulnData := map[string]interface{}{
-				"id":          cv.Vuln.ID,
-				"vulnId":      cv.Vuln.VulnID,
-				"description": cv.Vuln.Description,
-				"severity":    cv.Vuln.Severity,
-				"cvssScore":   cv.Vuln.CvssScore,
-				"source":      cv.Vuln.Source,
-			}
-			if cv.Vuln.VulnInfo != nil {
-				vulnData["epssScore"] = cv.Vuln.VulnInfo.EpssScore
-				vulnData["epssPercentile"] = cv.Vuln.VulnInfo.EpssPercentile
-				vulnData["kev"] = cv.Vuln.VulnInfo.Kev
-				vulnData["cwes"] = cv.Vuln.VulnInfo.Cwes
-			}
-			vuln["vulnerability"] = vulnData
-		}
-		if cv.VexStatus != nil {
-			vuln["vexStatus"] = cv.VexStatus.Name
-			vuln["vexStatusId"] = cv.VexStatus.ID
-		}
-		if cv.VexJustification != nil {
-			vuln["vexJustification"] = cv.VexJustification.Name
-			vuln["vexJustificationId"] = cv.VexJustification.ID
-		}
-		vulns[i] = vuln
-	}
-
 	return formatResult(map[string]interface{}{
-		"vulnerabilities": vulns,
+		"vulnerabilities": formatComponentVulns(result.ComponentVulns, matchReasons, true),
 		"totalCount":      result.TotalCount,
 		"hasMore":         result.HasNextPage,
 	})
@@ -804,6 +783,7 @@ func (s *Server) handleUpdateComponentVex(ctx context.Context, request mcp.CallT
 
 func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
+	filters := getVulnerabilityMetadataFilters(args)
 	input := api.ListComponentVulnsInput{
 		First: getIntParam(args, "limit", 50),
 	}
@@ -816,53 +796,42 @@ func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.Ca
 	if kev, ok := args["kev"].(bool); ok {
 		input.Kev = &kev
 	}
+	input.EpssMin = filters.EpssMin
+	input.EpssMax = filters.EpssMax
+	if productID, ok := args["product_id"].(string); ok && productID != "" {
+		input.ProductIDs = []string{productID}
+	}
+	if environmentID, ok := args["environment_id"].(string); ok && environmentID != "" {
+		input.EnvironmentIDs = []string{environmentID}
+	}
 
-	result, err := s.client.ListComponentVulns(ctx, input)
+	var result *api.ComponentVulnsResult
+	var matchReasons map[string][]string
+	var err error
+	if filters.MatchAny {
+		result, matchReasons, err = s.listComponentVulnsAny(ctx, input, filters)
+	} else {
+		query := input
+		if filters.HasClientSideThresholds() {
+			query.First = vulnerabilityAnyQueryLimit(input.First)
+		}
+		result, err = s.client.ListComponentVulns(ctx, query)
+		if err == nil {
+			matchReasons = matchReasonsForComponentVulns(result.ComponentVulns, filters)
+			result.ComponentVulns = filterComponentVulnsByClientThresholds(result.ComponentVulns, filters)
+			if filters.HasClientSideThresholds() {
+				result.TotalCount = len(result.ComponentVulns)
+				result.ComponentVulns = limitComponentVulns(result.ComponentVulns, input.First)
+				result.HasNextPage = result.HasNextPage || result.TotalCount > len(result.ComponentVulns)
+			}
+		}
+	}
 	if err != nil {
 		return newToolResultError(fmt.Sprintf("Failed to search vulnerabilities: %v", err)), nil
 	}
 
-	vulns := make([]map[string]interface{}, len(result.ComponentVulns))
-	for i, cv := range result.ComponentVulns {
-		vuln := map[string]interface{}{
-			"id":        cv.ID,
-			"versionId": cv.VersionID,
-			"fixedIn":   cv.FixedIn,
-			"updatedAt": cv.UpdatedAt,
-		}
-		if cv.Component != nil {
-			vuln["component"] = map[string]interface{}{
-				"id":      cv.Component.ID,
-				"name":    cv.Component.Name,
-				"version": cv.Component.Version,
-				"purl":    cv.Component.Purl,
-			}
-		}
-		if cv.Vuln != nil {
-			vulnData := map[string]interface{}{
-				"vulnId":    cv.Vuln.VulnID,
-				"severity":  cv.Vuln.Severity,
-				"cvssScore": cv.Vuln.CvssScore,
-			}
-			if cv.Vuln.VulnInfo != nil {
-				vulnData["kev"] = cv.Vuln.VulnInfo.Kev
-				vulnData["epssScore"] = cv.Vuln.VulnInfo.EpssScore
-			}
-			vuln["vulnerability"] = vulnData
-		}
-		if cv.VexStatus != nil {
-			vuln["vexStatus"] = cv.VexStatus.Name
-			vuln["vexStatusId"] = cv.VexStatus.ID
-		}
-		if cv.VexJustification != nil {
-			vuln["vexJustification"] = cv.VexJustification.Name
-			vuln["vexJustificationId"] = cv.VexJustification.ID
-		}
-		vulns[i] = vuln
-	}
-
 	return formatResult(map[string]interface{}{
-		"vulnerabilities": vulns,
+		"vulnerabilities": formatComponentVulns(result.ComponentVulns, matchReasons, false),
 		"totalCount":      result.TotalCount,
 		"hasMore":         result.HasNextPage,
 	})
@@ -1046,6 +1015,324 @@ func (s *Server) handleListLicenses(ctx context.Context, request mcp.CallToolReq
 }
 
 // Helper functions
+
+type vulnerabilityMetadataFilters struct {
+	EpssMin     *float64
+	EpssMax     *float64
+	CvssMin     *float64
+	CvssMax     *float64
+	Kev         *bool
+	MatchAny    bool
+	Exceptional bool
+}
+
+func getVulnerabilityMetadataFilters(args map[string]interface{}) vulnerabilityMetadataFilters {
+	filters := vulnerabilityMetadataFilters{
+		EpssMin: getFloatPtrParam(args, "epss_min"),
+		EpssMax: getFloatPtrParam(args, "epss_max"),
+		CvssMin: getFloatPtrParam(args, "cvss_min"),
+		CvssMax: getFloatPtrParam(args, "cvss_max"),
+	}
+	if kev, ok := args["kev"].(bool); ok {
+		filters.Kev = &kev
+	}
+	if exceptional, ok := args["exceptional"].(bool); ok && exceptional {
+		epssMin := 0.05
+		cvssMin := 9.0
+		kev := true
+		filters.EpssMin = &epssMin
+		filters.CvssMin = &cvssMin
+		filters.Kev = &kev
+		filters.MatchAny = true
+		filters.Exceptional = true
+	}
+	if matchMode, ok := args["match_mode"].(string); ok && strings.EqualFold(matchMode, "any") {
+		filters.MatchAny = true
+	}
+	return filters
+}
+
+func (f vulnerabilityMetadataFilters) HasClientSideThresholds() bool {
+	return f.CvssMin != nil || f.CvssMax != nil
+}
+
+func (s *Server) listVersionVulnsAny(ctx context.Context, input api.ListVersionVulnsInput, filters vulnerabilityMetadataFilters) (*api.ComponentVulnsResult, map[string][]string, error) {
+	merged := make(map[string]api.ComponentVuln)
+	reasons := make(map[string][]string)
+	hasMore := false
+	queryLimit := vulnerabilityAnyQueryLimit(input.First)
+
+	if filters.Kev != nil {
+		query := input
+		query.First = queryLimit
+		query.Kev = filters.Kev
+		query.EpssMin = nil
+		query.EpssMax = nil
+		result, err := s.client.ListVersionVulns(ctx, query)
+		if err != nil {
+			return nil, nil, err
+		}
+		mergeComponentVulns(merged, reasons, result.ComponentVulns, "kev")
+		hasMore = hasMore || result.HasNextPage
+	}
+	if filters.EpssMin != nil || filters.EpssMax != nil {
+		query := input
+		query.First = queryLimit
+		query.Kev = nil
+		query.EpssMin = filters.EpssMin
+		query.EpssMax = filters.EpssMax
+		result, err := s.client.ListVersionVulns(ctx, query)
+		if err != nil {
+			return nil, nil, err
+		}
+		mergeComponentVulns(merged, reasons, result.ComponentVulns, "epss")
+		hasMore = hasMore || result.HasNextPage
+	}
+	if filters.CvssMin != nil || filters.CvssMax != nil {
+		query := input
+		query.First = queryLimit
+		query.Kev = nil
+		query.EpssMin = nil
+		query.EpssMax = nil
+		result, err := s.client.ListVersionVulns(ctx, query)
+		if err != nil {
+			return nil, nil, err
+		}
+		mergeComponentVulns(merged, reasons, filterComponentVulnsByCvss(result.ComponentVulns, filters), "cvss")
+		hasMore = hasMore || result.HasNextPage
+	}
+
+	vulns := componentVulnMapValues(merged, input.First)
+	return &api.ComponentVulnsResult{
+		ComponentVulns: vulns,
+		TotalCount:     len(merged),
+		HasNextPage:    hasMore || len(merged) > len(vulns),
+	}, reasons, nil
+}
+
+func (s *Server) listComponentVulnsAny(ctx context.Context, input api.ListComponentVulnsInput, filters vulnerabilityMetadataFilters) (*api.ComponentVulnsResult, map[string][]string, error) {
+	merged := make(map[string]api.ComponentVuln)
+	reasons := make(map[string][]string)
+	hasMore := false
+	queryLimit := vulnerabilityAnyQueryLimit(input.First)
+
+	if filters.Kev != nil {
+		query := input
+		query.First = queryLimit
+		query.Kev = filters.Kev
+		query.EpssMin = nil
+		query.EpssMax = nil
+		result, err := s.client.ListComponentVulns(ctx, query)
+		if err != nil {
+			return nil, nil, err
+		}
+		mergeComponentVulns(merged, reasons, result.ComponentVulns, "kev")
+		hasMore = hasMore || result.HasNextPage
+	}
+	if filters.EpssMin != nil || filters.EpssMax != nil {
+		query := input
+		query.First = queryLimit
+		query.Kev = nil
+		query.EpssMin = filters.EpssMin
+		query.EpssMax = filters.EpssMax
+		result, err := s.client.ListComponentVulns(ctx, query)
+		if err != nil {
+			return nil, nil, err
+		}
+		mergeComponentVulns(merged, reasons, result.ComponentVulns, "epss")
+		hasMore = hasMore || result.HasNextPage
+	}
+	if filters.CvssMin != nil || filters.CvssMax != nil {
+		query := input
+		query.First = queryLimit
+		query.Kev = nil
+		query.EpssMin = nil
+		query.EpssMax = nil
+		result, err := s.client.ListComponentVulns(ctx, query)
+		if err != nil {
+			return nil, nil, err
+		}
+		mergeComponentVulns(merged, reasons, filterComponentVulnsByCvss(result.ComponentVulns, filters), "cvss")
+		hasMore = hasMore || result.HasNextPage
+	}
+
+	vulns := componentVulnMapValues(merged, input.First)
+	return &api.ComponentVulnsResult{
+		ComponentVulns: vulns,
+		TotalCount:     len(merged),
+		HasNextPage:    hasMore || len(merged) > len(vulns),
+	}, reasons, nil
+}
+
+func mergeComponentVulns(merged map[string]api.ComponentVuln, reasons map[string][]string, vulns []api.ComponentVuln, reason string) {
+	for _, vuln := range vulns {
+		merged[vuln.ID] = vuln
+		if !stringSliceContains(reasons[vuln.ID], reason) {
+			reasons[vuln.ID] = append(reasons[vuln.ID], reason)
+		}
+	}
+}
+
+func componentVulnMapValues(merged map[string]api.ComponentVuln, limit int) []api.ComponentVuln {
+	if limit <= 0 {
+		limit = 50
+	}
+	vulns := make([]api.ComponentVuln, 0, minInt(len(merged), limit))
+	for _, vuln := range merged {
+		if len(vulns) >= limit {
+			break
+		}
+		vulns = append(vulns, vuln)
+	}
+	return vulns
+}
+
+func limitComponentVulns(vulns []api.ComponentVuln, limit int) []api.ComponentVuln {
+	if limit <= 0 {
+		limit = 50
+	}
+	if len(vulns) <= limit {
+		return vulns
+	}
+	return vulns[:limit]
+}
+
+func vulnerabilityAnyQueryLimit(limit int) int {
+	if limit <= 0 {
+		limit = 50
+	}
+	return maxInt(limit, 500)
+}
+
+func filterComponentVulnsByClientThresholds(vulns []api.ComponentVuln, filters vulnerabilityMetadataFilters) []api.ComponentVuln {
+	vulns = filterComponentVulnsByCvss(vulns, filters)
+	return vulns
+}
+
+func filterComponentVulnsByCvss(vulns []api.ComponentVuln, filters vulnerabilityMetadataFilters) []api.ComponentVuln {
+	if filters.CvssMin == nil && filters.CvssMax == nil {
+		return vulns
+	}
+	filtered := make([]api.ComponentVuln, 0, len(vulns))
+	for _, vuln := range vulns {
+		if vuln.Vuln == nil {
+			continue
+		}
+		score := vuln.Vuln.CvssScore
+		if filters.CvssMin != nil && score < *filters.CvssMin {
+			continue
+		}
+		if filters.CvssMax != nil && score > *filters.CvssMax {
+			continue
+		}
+		filtered = append(filtered, vuln)
+	}
+	return filtered
+}
+
+func matchReasonsForComponentVulns(vulns []api.ComponentVuln, filters vulnerabilityMetadataFilters) map[string][]string {
+	reasons := make(map[string][]string)
+	for _, vuln := range vulns {
+		reasons[vuln.ID] = componentVulnMatchReasons(vuln, filters)
+	}
+	return reasons
+}
+
+func componentVulnMatchReasons(vuln api.ComponentVuln, filters vulnerabilityMetadataFilters) []string {
+	reasons := []string{}
+	if filters.Kev != nil && *filters.Kev && vuln.Vuln != nil && vuln.Vuln.VulnInfo != nil && vuln.Vuln.VulnInfo.Kev {
+		reasons = append(reasons, "kev")
+	}
+	if (filters.EpssMin != nil || filters.EpssMax != nil) && vuln.Vuln != nil && vuln.Vuln.VulnInfo != nil {
+		score := vuln.Vuln.VulnInfo.EpssScore
+		if (filters.EpssMin == nil || score >= *filters.EpssMin) && (filters.EpssMax == nil || score <= *filters.EpssMax) {
+			reasons = append(reasons, "epss")
+		}
+	}
+	if (filters.CvssMin != nil || filters.CvssMax != nil) && vuln.Vuln != nil {
+		score := vuln.Vuln.CvssScore
+		if (filters.CvssMin == nil || score >= *filters.CvssMin) && (filters.CvssMax == nil || score <= *filters.CvssMax) {
+			reasons = append(reasons, "cvss")
+		}
+	}
+	return reasons
+}
+
+func formatComponentVulns(componentVulns []api.ComponentVuln, matchReasons map[string][]string, includeDetail bool) []map[string]interface{} {
+	vulns := make([]map[string]interface{}, len(componentVulns))
+	for i, cv := range componentVulns {
+		vuln := map[string]interface{}{
+			"id":        cv.ID,
+			"versionId": cv.VersionID,
+			"fixedIn":   cv.FixedIn,
+			"updatedAt": cv.UpdatedAt,
+		}
+		if includeDetail {
+			vuln["detail"] = cv.Detail
+		}
+		if reasons := matchReasons[cv.ID]; len(reasons) > 0 {
+			vuln["matchReasons"] = reasons
+		}
+		if cv.Component != nil {
+			vuln["component"] = map[string]interface{}{
+				"id":      cv.Component.ID,
+				"name":    cv.Component.Name,
+				"version": cv.Component.Version,
+				"purl":    cv.Component.Purl,
+			}
+		}
+		if cv.Vuln != nil {
+			vulnData := map[string]interface{}{
+				"id":          cv.Vuln.ID,
+				"vulnId":      cv.Vuln.VulnID,
+				"description": cv.Vuln.Description,
+				"severity":    cv.Vuln.Severity,
+				"cvssScore":   cv.Vuln.CvssScore,
+				"source":      cv.Vuln.Source,
+			}
+			if cv.Vuln.VulnInfo != nil {
+				vulnData["epssScore"] = cv.Vuln.VulnInfo.EpssScore
+				vulnData["epssPercentile"] = cv.Vuln.VulnInfo.EpssPercentile
+				vulnData["kev"] = cv.Vuln.VulnInfo.Kev
+				vulnData["cwes"] = cv.Vuln.VulnInfo.Cwes
+			}
+			vuln["vulnerability"] = vulnData
+		}
+		if cv.VexStatus != nil {
+			vuln["vexStatus"] = cv.VexStatus.Name
+			vuln["vexStatusId"] = cv.VexStatus.ID
+		}
+		if cv.VexJustification != nil {
+			vuln["vexJustification"] = cv.VexJustification.Name
+			vuln["vexJustificationId"] = cv.VexJustification.ID
+		}
+		vulns[i] = vuln
+	}
+	return vulns
+}
+
+func stringSliceContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func minInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
+}
 
 func formatTicketingStatus(status *api.TicketingStatus) map[string]interface{} {
 	result := map[string]interface{}{
@@ -1278,6 +1565,32 @@ func getIntParam(args map[string]interface{}, key string, defaultVal int) int {
 		}
 	}
 	return defaultVal
+}
+
+func getFloatPtrParam(args map[string]interface{}, key string) *float64 {
+	val, ok := args[key]
+	if !ok {
+		return nil
+	}
+	switch v := val.(type) {
+	case float64:
+		return &v
+	case float32:
+		value := float64(v)
+		return &value
+	case int:
+		value := float64(v)
+		return &value
+	case int64:
+		value := float64(v)
+		return &value
+	case json.Number:
+		value, err := v.Float64()
+		if err == nil {
+			return &value
+		}
+	}
+	return nil
 }
 
 func getStringSliceParam(args map[string]interface{}, key string) []string {

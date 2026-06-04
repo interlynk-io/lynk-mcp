@@ -95,6 +95,8 @@ type ListVersionVulnsInput struct {
 	Severity  []string
 	Status    []string
 	Kev       *bool
+	EpssMin   *float64
+	EpssMax   *float64
 	Search    string
 }
 
@@ -120,6 +122,7 @@ func (c *Client) ListVersionVulns(ctx context.Context, input ListVersionVulnsInp
 	if input.Kev != nil {
 		vars["kev"] = *input.Kev
 	}
+	addEpssRangeVar(vars, input.EpssMin, input.EpssMax)
 	if input.Search != "" {
 		vars["search"] = input.Search
 	}
@@ -380,6 +383,8 @@ type ListComponentVulnsInput struct {
 	Severity       []string
 	Status         []string
 	Kev            *bool
+	EpssMin        *float64
+	EpssMax        *float64
 	Search         string
 	EnvironmentIDs []string
 	ProductIDs     []string
@@ -405,6 +410,7 @@ func (c *Client) ListComponentVulns(ctx context.Context, input ListComponentVuln
 	if input.Kev != nil {
 		vars["kev"] = *input.Kev
 	}
+	addEpssRangeVar(vars, input.EpssMin, input.EpssMax)
 	if input.Search != "" {
 		vars["search"] = input.Search
 	}
@@ -516,6 +522,25 @@ func (c *Client) ListComponentVulns(ctx context.Context, input ListComponentVuln
 		HasNextPage:    result.ComponentVulns.PageInfo.HasNextPage,
 		EndCursor:      result.ComponentVulns.PageInfo.EndCursor,
 	}, nil
+}
+
+func addEpssRangeVar(vars map[string]interface{}, min, max *float64) {
+	if min == nil && max == nil {
+		return
+	}
+
+	minVal := 0.0
+	if min != nil {
+		minVal = *min
+	}
+	maxVal := 1.0
+	if max != nil {
+		maxVal = *max
+	}
+	vars["epss"] = map[string]interface{}{
+		"min": minVal,
+		"max": maxVal,
+	}
 }
 
 // GetVexStatuses fetches all VEX statuses
