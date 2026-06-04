@@ -17,7 +17,110 @@ package api
 import (
 	"context"
 	"testing"
+	"time"
 )
+
+func TestGetVuln_ByCveIDAcceptsTimestampWithoutTimezone(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"cveLookup": {
+					"vulnId": "CVE-2025-32463",
+					"description": "sudo vulnerability",
+					"severity": "high",
+					"published": "2025-06-30T21:15:30.257",
+					"lastModified": "2025-07-01T10:11:12.123",
+					"cvssScore": 9.3,
+					"cvssVector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+					"cwes": ["CWE-863"],
+					"advisories": ["https://example.com/advisory"]
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	vuln, err := client.GetVuln(context.Background(), "", "CVE-2025-32463")
+	if err != nil {
+		t.Fatalf("GetVuln returned error: %v", err)
+	}
+
+	wantPublished := time.Date(2025, 6, 30, 21, 15, 30, 257000000, time.UTC)
+	if !vuln.PublishedAt.Equal(wantPublished) {
+		t.Fatalf("PublishedAt = %s, want %s", vuln.PublishedAt, wantPublished)
+	}
+	if vuln.VulnID != "CVE-2025-32463" || vuln.Severity != "high" {
+		t.Fatalf("unexpected vulnerability: %#v", vuln)
+	}
+}
+
+func TestListVersionVulns_AcceptsNestedVulnTimestampsWithoutTimezone(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"sbom": {
+					"vulns": {
+						"nodes": [
+							{
+								"id": "component-vuln-1",
+								"componentId": "component-1",
+								"vulnId": "vuln-1",
+								"sbomId": "version-1",
+								"fixedIn": "",
+								"fixedVersions": [],
+								"detail": "",
+								"impact": "",
+								"actionStmt": "",
+								"createdAt": "2026-04-16T23:00:09Z",
+								"updatedAt": "2026-04-16T23:00:09Z",
+								"component": null,
+								"vuln": {
+									"id": "vuln-1",
+									"vulnId": "CVE-2025-32463",
+									"desc": "sudo vulnerability",
+									"sev": "high",
+									"cvssScore": 9.3,
+									"cvssVector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+									"source": "nvd",
+									"publishedAt": "2025-06-30T21:15:30.257",
+									"lastModifiedAt": "2025-07-01T10:11:12.123",
+									"vulnInfo": {
+										"cveId": "CVE-2025-32463",
+										"epssScore": 0.1,
+										"epssPercentile": 0.2,
+										"kev": false,
+										"cwes": ["CWE-863"]
+									}
+								},
+								"vexStatus": null,
+								"vexJustification": null
+							}
+						],
+						"totalCount": 1,
+						"pageInfo": {
+							"hasNextPage": false,
+							"endCursor": ""
+						}
+					}
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	result, err := client.ListVersionVulns(context.Background(), ListVersionVulnsInput{VersionID: "version-1"})
+	if err != nil {
+		t.Fatalf("ListVersionVulns returned error: %v", err)
+	}
+
+	if len(result.ComponentVulns) != 1 {
+		t.Fatalf("len(ComponentVulns) = %d, want 1", len(result.ComponentVulns))
+	}
+	wantPublished := time.Date(2025, 6, 30, 21, 15, 30, 257000000, time.UTC)
+	if !result.ComponentVulns[0].Vuln.PublishedAt.Equal(wantPublished) {
+		t.Fatalf("PublishedAt = %s, want %s", result.ComponentVulns[0].Vuln.PublishedAt, wantPublished)
+	}
+}
 
 func TestGetVexStatuses(t *testing.T) {
 	gql := &fakeGraphQLExecutor{
