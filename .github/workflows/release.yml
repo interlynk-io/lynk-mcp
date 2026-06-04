@@ -63,11 +63,21 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
+      - name: Import release signing key
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.INTERLYNK_RELEASE_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.INTERLYNK_RELEASE_GPG_PASSPHRASE }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+
       - name: Verify tool versions
         run: |
           go version
           goreleaser -v
           cosign version
+          gpg --version
 
       - name: Download and verify sbom-tool
         run: |
@@ -82,7 +92,9 @@ jobs:
         run: make release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          INTERLYNK_RELEASE_GITHUB_TOKEN: ${{ secrets.INTERLYNK_RELEASE_GITHUB_TOKEN }}
+          INTERLYNK_RELEASE_SSH_KEY: ${{ secrets.INTERLYNK_RELEASE_SSH_KEY }}
+          GPG_SIGNING_KEY: ${{ steps.import_gpg.outputs.fingerprint }}
 
       - name: Generate SBOM
         run: |
