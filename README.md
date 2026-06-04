@@ -275,29 +275,55 @@ Add to `~/.config/zed/settings.json`:
 
 | Tool | Description |
 |------|-------------|
-| `get_organization` | Get organization info and metrics |
-| `list_products` | List all products |
-| `get_product` | Get product details with environments |
-| `list_environments` | List environments in a product |
-| `get_environment` | Get environment details |
+| `get_organization` | Get current organization information including metrics |
+| `list_products` | List all products in the organization |
+| `get_product` | Get details of a specific product including its environments |
+| `list_environments` | List environments within a product |
+| `get_environment` | Get details of a specific environment |
 
-### Versions & Components
+### Versions, SBOM Doctor & Components
 
 | Tool | Description |
 |------|-------------|
 | `list_versions` | List versions in an environment |
 | `get_version` | Get version details with statistics |
+| `list_doctor_results` | List SBOM Doctor findings for a version |
+| `compare_versions` | Compare two versions and show drift analysis |
 | `list_components` | List components in a version |
 | `get_component` | Get component details |
-| `compare_versions` | Compare two versions for drift |
+| `update_component` | Update component metadata; requires `confirm=true` |
+| `update_component_supplier` | Update component supplier metadata; requires `confirm=true` |
 
-### Vulnerabilities
+### Vulnerabilities & VEX
 
 | Tool | Description |
 |------|-------------|
-| `list_vulnerabilities` | List vulnerabilities with filters |
-| `get_vulnerability` | Get vulnerability by CVE or UUID |
+| `list_vulnerabilities` | List vulnerabilities in a version with optional filters |
+| `get_vulnerability` | Get vulnerability details by CVE or UUID |
+| `list_vex_statuses` | List VEX statuses with UUIDs for CVE triage |
+| `list_vex_justifications` | List VEX justifications with UUIDs for CVE triage |
+| `update_component_vex` | Update VEX data for a component vulnerability; requires `confirm=true` |
 | `search_vulnerabilities` | Search across all products |
+
+### Supply-Chain Security Incidents
+
+| Tool | Description |
+|------|-------------|
+| `list_security_incidents` | List supply-chain security incidents visible to the current organization |
+| `get_security_incident` | Get a supply-chain security incident, including markers and impact state |
+| `create_security_incident` | Create a draft security incident; requires operator permissions and `confirm=true` |
+| `update_security_incident` | Update editable security incident fields; requires operator permissions and `confirm=true` |
+| `add_security_incident_markers` | Add markers to a security incident; requires `confirm=true` |
+| `withdraw_security_incident_markers` | Withdraw active markers and resolve related active findings; requires `confirm=true` |
+| `publish_security_incident` | Publish a draft incident and queue the initial impact scan; requires `confirm=true` |
+| `resolve_security_incident` | Resolve an active security incident; requires `confirm=true` |
+| `archive_security_incident` | Archive a security incident; requires `confirm=true` |
+| `create_security_incident_update` | Add a timeline update to a security incident; requires operator permissions and `confirm=true` |
+| `get_security_incident_findings` | Get customer-facing findings for a security incident in the current organization |
+| `suppress_security_incident_finding` | Suppress a security incident finding; requires `confirm=true` and a reason |
+| `rerun_security_incident_impact_scan` | Queue impact scanning for an active or resolved incident; requires `confirm=true` |
+| `dry_run_security_incident_impact_scan` | Queue a dry-run impact scan for an incident; requires `confirm=true` |
+| `get_security_incident_dry_run_result` | Get latest dry-run impact scan results |
 
 ### Policies & Compliance
 
@@ -306,6 +332,7 @@ Add to `~/.config/zed/settings.json`:
 | `list_policies` | List security policies |
 | `get_policy` | Get policy details with rules |
 | `list_policy_violations` | List policy evaluation results |
+| `get_ticketing_status` | Get ticketing provider connection and policy application status |
 | `list_licenses` | List licenses with filtering |
 
 ## Available Resources
@@ -315,6 +342,7 @@ Add to `~/.config/zed/settings.json`:
 | `version:///{version_id}` | Complete version information |
 | `version:///{version_id}/components` | All components in a version |
 | `version:///{version_id}/vulnerabilities` | All vulnerabilities in a version |
+| `version:///{version_id}/doctor-results` | SBOM Doctor findings for a version |
 | `environment:///{environment_id}/latest-version` | Most recent version |
 | `organization:///summary` | Organization overview |
 | `vulnerability:///{cve_id}` | Vulnerability details by CVE |
