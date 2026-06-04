@@ -5,8 +5,8 @@ MCP server for Interlynk API. This server enables AI assistants like Claude, Cur
 ## Quick Start
 
 ```bash
-# Install via Homebrew
-brew install interlynk-io/tap/lynk-mcp
+# Install via Homebrew on macOS
+brew install --cask interlynk-io/interlynk/lynk-mcp
 
 # Configure your API token
 lynk-mcp configure
@@ -95,19 +95,62 @@ Once configured with your AI assistant, try these:
 
 ## Installation
 
-### Using Homebrew (macOS/Linux)
+### Homebrew (macOS)
 
 ```bash
-brew install interlynk-io/tap/lynk-mcp
+brew install --cask interlynk-io/interlynk/lynk-mcp
 ```
 
-### Using Go Install
+Homebrew installs update with normal Homebrew workflows:
+
+```bash
+brew update
+brew upgrade --cask lynk-mcp
+```
+
+The release workflow opens a PR against `interlynk-io/homebrew-interlynk` when a new tag is published.
+
+### Linux Packages
+
+Download the latest `.deb`, `.rpm`, or `.apk` package from the [GitHub releases](https://github.com/interlynk-io/lynk-mcp/releases/latest), then install the package for your distribution:
+
+```bash
+# Debian/Ubuntu
+sudo dpkg -i lynk-mcp_*_linux_*.deb
+
+# Fedora/RHEL
+sudo rpm -Uvh lynk-mcp_*_linux_*.rpm
+
+# Alpine
+sudo apk add --allow-untrusted lynk-mcp_*_linux_*.apk
+```
+
+Linux packages are built automatically on every release. A hosted `apt`, `yum`, or `apk` repository is not currently published, so package-manager upgrades require installing the newer release package.
+
+### Windows
+
+Using Scoop:
+
+```powershell
+scoop bucket add interlynk https://github.com/interlynk-io/homebrew-interlynk
+scoop install interlynk/lynk-mcp
+```
+
+Using winget:
+
+```powershell
+winget install Interlynk.lynk-mcp
+```
+
+The release workflow opens a PR for the Scoop bucket manifest and a winget package manifest PR when a new tag is published.
+
+### Go Install
 
 ```bash
 go install github.com/interlynk-io/lynk-mcp/cmd/lynk-mcp@latest
 ```
 
-### Using Docker
+### Docker
 
 ```bash
 # Pull from GitHub Container Registry
@@ -126,6 +169,19 @@ make build
 ```
 
 The binary is placed in `./build/lynk-mcp`. You can run it directly from there, or run `make install` to install it to `$GOPATH/bin` (typically `~/go/bin`) and use it from anywhere.
+
+### Release Automation
+
+Tagged releases publish binaries, archives, checksums, Linux packages, Docker images, and package-manager manifests. The release workflow expects these repository secrets when package-manager publishing is enabled:
+
+| Secret | Purpose |
+|--------|---------|
+| `INTERLYNK_RELEASE_GITHUB_TOKEN` | Opens Homebrew, Scoop, and winget manifest PRs |
+| `INTERLYNK_RELEASE_SSH_KEY` | Pushes signed Homebrew/Scoop PR branches to `interlynk-io/homebrew-interlynk` |
+| `INTERLYNK_RELEASE_GPG_PRIVATE_KEY` | Imports the release signing key used for tap commits |
+| `INTERLYNK_RELEASE_GPG_PASSPHRASE` | Unlocks the release signing key |
+
+The public key for `INTERLYNK_RELEASE_GPG_PRIVATE_KEY` must be uploaded to the GitHub account that owns the `interlynk-support-bot <support_eng@interlynk.io>` commit identity so GitHub marks tap PR commits as verified. See [Release Distribution](docs/release-distribution.md) for the shared release model used across Interlynk OSS tools.
 
 ## Configuration
 

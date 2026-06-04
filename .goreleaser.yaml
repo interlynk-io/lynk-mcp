@@ -85,6 +85,111 @@ nfpms:
         file_info:
           mode: 0644
 
+homebrew_casks:
+  - name: lynk-mcp
+    ids:
+      - lynk-mcp
+    binaries:
+      - lynk-mcp
+    repository:
+      owner: interlynk-io
+      name: homebrew-interlynk
+      branch: "lynk-mcp-{{ .Version }}"
+      token: "{{ .Env.INTERLYNK_RELEASE_GITHUB_TOKEN }}"
+      git:
+        url: "ssh://git@github.com/interlynk-io/homebrew-interlynk.git"
+        private_key: "{{ .Env.INTERLYNK_RELEASE_SSH_KEY }}"
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          owner: interlynk-io
+          name: homebrew-interlynk
+          branch: main
+    directory: Casks
+    homepage: https://github.com/interlynk-io/lynk-mcp
+    description: MCP server for Lynk SBOM and vulnerability management
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/lynk-mcp"]
+          end
+    commit_author:
+      name: interlynk-support-bot
+      email: support_eng@interlynk.io
+      signing:
+        enabled: true
+        key: "{{ .Env.GPG_SIGNING_KEY }}"
+        program: gpg
+        format: openpgp
+
+scoops:
+  - name: lynk-mcp
+    ids:
+      - lynk-mcp
+    repository:
+      owner: interlynk-io
+      name: homebrew-interlynk
+      branch: "lynk-mcp-scoop-{{ .Version }}"
+      token: "{{ .Env.INTERLYNK_RELEASE_GITHUB_TOKEN }}"
+      git:
+        url: "ssh://git@github.com/interlynk-io/homebrew-interlynk.git"
+        private_key: "{{ .Env.INTERLYNK_RELEASE_SSH_KEY }}"
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          owner: interlynk-io
+          name: homebrew-interlynk
+          branch: main
+    homepage: https://github.com/interlynk-io/lynk-mcp
+    description: MCP server for Lynk SBOM and vulnerability management
+    license: Apache-2.0
+    commit_author:
+      name: interlynk-support-bot
+      email: support_eng@interlynk.io
+      signing:
+        enabled: true
+        key: "{{ .Env.GPG_SIGNING_KEY }}"
+        program: gpg
+        format: openpgp
+
+winget:
+  - name: lynk-mcp
+    publisher: Interlynk
+    publisher_url: https://interlynk.io
+    publisher_support_url: https://github.com/interlynk-io/lynk-mcp/issues
+    package_identifier: Interlynk.lynk-mcp
+    package_name: lynk-mcp
+    ids:
+      - lynk-mcp
+    license: Apache-2.0
+    license_url: https://github.com/interlynk-io/lynk-mcp/blob/main/LICENSE
+    homepage: https://github.com/interlynk-io/lynk-mcp
+    short_description: MCP server for Lynk SBOM and vulnerability management
+    description: MCP server for Interlynk API, enabling AI assistants to interact with Lynk organizations for SBOM management, vulnerability tracking, and compliance checking.
+    tags:
+      - mcp
+      - sbom
+      - vulnerability-management
+      - software-supply-chain
+    repository:
+      owner: interlynk-io
+      name: winget-pkgs
+      branch: "lynk-mcp-{{ .Version }}"
+      token: "{{ .Env.INTERLYNK_RELEASE_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+    commit_author:
+      name: interlynk-support-bot
+      email: support_eng@interlynk.io
+
 checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
