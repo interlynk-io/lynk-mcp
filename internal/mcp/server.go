@@ -29,6 +29,8 @@ type lynkClient interface {
 	GetProduct(ctx context.Context, id string) (*api.Product, error)
 	ListVersions(ctx context.Context, input api.ListVersionsInput) (*api.VersionsResult, error)
 	GetVersion(ctx context.Context, id string) (*api.Version, error)
+	SearchVersions(ctx context.Context, input api.VersionSearchInput) (*api.VersionsResult, error)
+	DownloadSBOM(ctx context.Context, input api.DownloadSBOMInput) (*api.DownloadSBOMResult, error)
 	ListDoctorResults(ctx context.Context, input api.ListDoctorResultsInput) (*api.DoctorResultsResult, error)
 	CompareVersions(ctx context.Context, sourceVersionID, targetVersionID string) ([]api.VersionDiff, error)
 	ListComponents(ctx context.Context, input api.ListComponentsInput) (*api.ComponentsResult, error)
@@ -142,7 +144,25 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(mcp.NewTool("get_version",
 		mcp.WithDescription("Get details of a specific version including statistics"),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the version")),
+		mcp.WithBoolean("include_component_vuln_summary", mcp.Description("Include per-component vulnerability summary from component stats")),
+		mcp.WithNumber("component_summary_limit", mcp.Description("Maximum number of component summaries to return when included (default: 100)")),
 	), s.handleGetVersion)
+
+	s.mcp.AddTool(mcp.NewTool("find_version",
+		mcp.WithDescription("Find versions by exact version string with optional product and environment name disambiguation"),
+		mcp.WithString("version", mcp.Required(), mcp.Description("Exact version string to find")),
+		mcp.WithString("product_name", mcp.Description("Optional exact product/repository name to disambiguate")),
+		mcp.WithString("environment_name", mcp.Description("Optional exact environment/project name to disambiguate")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of candidate versions to inspect (default: 50)")),
+	), s.handleFindVersion)
+
+	s.mcp.AddTool(mcp.NewTool("export_cyclonedx_vex",
+		mcp.WithDescription("Export a CycloneDX SBOM with vulnerabilities for VEX workflows. Returns readiness/status, metadata, and optionally content."),
+		mcp.WithString("version_id", mcp.Required(), mcp.Description("The UUID of the version/SBOM to export")),
+		mcp.WithString("spec_version", mcp.Description("CycloneDX spec version (default: 1.6)")),
+		mcp.WithBoolean("include_content", mcp.Description("Include download content in the response (default: true)")),
+		mcp.WithBoolean("require_vuln_scan_complete", mcp.Description("Require vulnerability scanning to be finished before content is returned (default: true)")),
+	), s.handleExportCycloneDXVex)
 
 	s.mcp.AddTool(mcp.NewTool("list_doctor_results",
 		mcp.WithDescription("List SBOM Doctor findings for a version"),

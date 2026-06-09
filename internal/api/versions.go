@@ -46,6 +46,12 @@ type VersionStats struct {
 	VulnStats         map[string]interface{}
 }
 
+// ComponentVulnerabilitySummary contains vulnerability counts for a component.
+type ComponentVulnerabilitySummary struct {
+	TotalCount int
+	Stats      map[string]interface{}
+}
+
 // VersionComponent represents a component in a version
 type VersionComponent struct {
 	ID           string
@@ -70,6 +76,7 @@ type VersionComponent struct {
 	VersionID    string
 	UpdatedAt    time.Time
 	VersionInfo  *Version
+	VulnSummary  *ComponentVulnerabilitySummary
 }
 
 // VersionsResult represents the result of listing versions
@@ -88,6 +95,31 @@ type ComponentsResult struct {
 	EndCursor   string
 }
 
+// VersionSearchInput contains parameters for searching versions across the organization.
+type VersionSearchInput struct {
+	Search string
+	First  int
+	After  string
+}
+
+// DownloadSBOMInput contains parameters for SBOM downloads.
+type DownloadSBOMInput struct {
+	VersionID        string
+	Spec             string
+	SpecVersion      string
+	IncludeVulns     *bool
+	RequireCompleted []string
+}
+
+// DownloadSBOMResult contains SBOM download readiness, metadata, and content.
+type DownloadSBOMResult struct {
+	Ready            bool
+	Filename         string
+	ContentType      string
+	Content          string
+	ProcessingStatus map[string]string
+}
+
 // VersionDiff represents a diff entry between two versions
 type VersionDiff struct {
 	DiffType           string
@@ -96,6 +128,75 @@ type VersionDiff struct {
 	SubjectComponentID string
 	TargetComponent    *VersionComponent
 	TargetComponentID  string
+}
+
+type versionNode struct {
+	ID             string    `json:"id"`
+	ProjectVersion string    `json:"projectVersion"`
+	Spec           string    `json:"spec"`
+	SpecVersion    string    `json:"specVersion"`
+	Format         string    `json:"format"`
+	Lifecycle      string    `json:"lifecycle"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+	ProjectID      string    `json:"projectId"`
+	Stats          *struct {
+		CompCount         int                    `json:"compCount"`
+		CompPurlCount     int                    `json:"compPurlCount"`
+		CompCpeCount      int                    `json:"compCpeCount"`
+		CompLicenseCount  int                    `json:"compLicenseCount"`
+		CompSupplierCount int                    `json:"compSupplierCount"`
+		VulnStats         map[string]interface{} `json:"vulnStats"`
+	} `json:"stats"`
+	Project *struct {
+		ID             string `json:"id"`
+		Name           string `json:"name"`
+		ProjectGroupID string `json:"projectGroupId"`
+		ProjectGroup   *struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"projectGroup"`
+	} `json:"project"`
+}
+
+func mapVersionNode(n versionNode) Version {
+	var stats *VersionStats
+	if n.Stats != nil {
+		stats = &VersionStats{
+			CompCount:         n.Stats.CompCount,
+			CompPurlCount:     n.Stats.CompPurlCount,
+			CompCpeCount:      n.Stats.CompCpeCount,
+			CompLicenseCount:  n.Stats.CompLicenseCount,
+			CompSupplierCount: n.Stats.CompSupplierCount,
+			VulnStats:         n.Stats.VulnStats,
+		}
+	}
+	version := Version{
+		ID:            n.ID,
+		Version:       n.ProjectVersion,
+		Spec:          n.Spec,
+		SpecVersion:   n.SpecVersion,
+		Format:        n.Format,
+		Lifecycle:     n.Lifecycle,
+		CreatedAt:     n.CreatedAt,
+		UpdatedAt:     n.UpdatedAt,
+		EnvironmentID: n.ProjectID,
+		Stats:         stats,
+	}
+	if n.Project != nil {
+		version.Environment = &Environment{
+			ID:        n.Project.ID,
+			Name:      n.Project.Name,
+			ProductID: n.Project.ProjectGroupID,
+		}
+		if n.Project.ProjectGroup != nil {
+			version.Environment.Product = &Product{
+				ID:   n.Project.ProjectGroup.ID,
+				Name: n.Project.ProjectGroup.Name,
+			}
+		}
+	}
+	return version
 }
 
 // ListVersionsInput contains parameters for listing versions
@@ -193,6 +294,48 @@ func (c *Client) ListVersions(ctx context.Context, input ListVersionsInput) (*Ve
 	}, nil
 }
 
+// SearchVersions searches versions across the organization by version string.
+func (c *Client) SearchVersions(ctx context.Context, input VersionSearchInput) (*VersionsResult, error) {
+	vars := map[string]interface{}{
+		"search": input.Search,
+	}
+	if input.First > 0 {
+		vars["first"] = input.First
+	} else {
+		vars["first"] = 20
+	}
+	if input.After != "" {
+		vars["after"] = input.After
+	}
+
+	var result struct {
+		ProjectVersions struct {
+			Nodes      []versionNode `json:"nodes"`
+			TotalCount int           `json:"totalCount"`
+			PageInfo   struct {
+				HasNextPage bool   `json:"hasNextPage"`
+				EndCursor   string `json:"endCursor"`
+			} `json:"pageInfo"`
+		} `json:"projectVersions"`
+	}
+
+	if err := c.gql.Execute(ctx, graphql.ProjectVersionsSearchQuery, vars, &result); err != nil {
+		return nil, err
+	}
+
+	versions := make([]Version, len(result.ProjectVersions.Nodes))
+	for i, n := range result.ProjectVersions.Nodes {
+		versions[i] = mapVersionNode(n)
+	}
+
+	return &VersionsResult{
+		Versions:    versions,
+		TotalCount:  result.ProjectVersions.TotalCount,
+		HasNextPage: result.ProjectVersions.PageInfo.HasNextPage,
+		EndCursor:   result.ProjectVersions.PageInfo.EndCursor,
+	}, nil
+}
+
 // GetVersion fetches a single version by ID
 func (c *Client) GetVersion(ctx context.Context, id string) (*Version, error) {
 	vars := map[string]interface{}{
@@ -261,6 +404,64 @@ func (c *Client) GetVersion(ctx context.Context, id string) (*Version, error) {
 	}, nil
 }
 
+// DownloadSBOM fetches SBOM download readiness, metadata, and content.
+func (c *Client) DownloadSBOM(ctx context.Context, input DownloadSBOMInput) (*DownloadSBOMResult, error) {
+	vars := map[string]interface{}{
+		"sbomId": input.VersionID,
+	}
+	if input.Spec != "" {
+		vars["spec"] = input.Spec
+	}
+	if input.SpecVersion != "" {
+		vars["specVersion"] = input.SpecVersion
+	}
+	if input.IncludeVulns != nil {
+		vars["includeVulns"] = *input.IncludeVulns
+	}
+	if len(input.RequireCompleted) > 0 {
+		vars["requireCompleted"] = input.RequireCompleted
+	}
+
+	var result struct {
+		Sbom struct {
+			Download *struct {
+				Ready            bool   `json:"ready"`
+				Filename         string `json:"filename"`
+				ContentType      string `json:"contentType"`
+				Content          string `json:"content"`
+				ProcessingStatus *struct {
+					Automation string `json:"automation"`
+					PolicyScan string `json:"policyScan"`
+					VulnScan   string `json:"vulnScan"`
+				} `json:"processingStatus"`
+			} `json:"download"`
+		} `json:"sbom"`
+	}
+
+	if err := c.gql.Execute(ctx, graphql.SbomDownloadQuery, vars, &result); err != nil {
+		return nil, err
+	}
+	if result.Sbom.Download == nil {
+		return &DownloadSBOMResult{}, nil
+	}
+
+	download := &DownloadSBOMResult{
+		Ready:       result.Sbom.Download.Ready,
+		Filename:    result.Sbom.Download.Filename,
+		ContentType: result.Sbom.Download.ContentType,
+		Content:     result.Sbom.Download.Content,
+	}
+	if result.Sbom.Download.ProcessingStatus != nil {
+		download.ProcessingStatus = map[string]string{
+			"automation": result.Sbom.Download.ProcessingStatus.Automation,
+			"policyScan": result.Sbom.Download.ProcessingStatus.PolicyScan,
+			"vulnScan":   result.Sbom.Download.ProcessingStatus.VulnScan,
+		}
+	}
+
+	return download, nil
+}
+
 // ListComponentsInput contains parameters for listing components
 type ListComponentsInput struct {
 	VersionID string
@@ -298,19 +499,23 @@ func (c *Client) ListComponents(ctx context.Context, input ListComponentsInput) 
 		Sbom struct {
 			Components struct {
 				Nodes []struct {
-					ID          string    `json:"id"`
-					Name        string    `json:"name"`
-					Version     string    `json:"version"`
-					Kind        string    `json:"kind"`
-					Purl        string    `json:"purl"`
-					Cpes        []string  `json:"cpes"`
-					LicensesExp string    `json:"licensesExp"`
-					Group       string    `json:"group"`
-					Description string    `json:"description"`
-					Primary     bool      `json:"primary"`
-					Internal    bool      `json:"internal"`
-					SbomID      string    `json:"sbomId"`
-					UpdatedAt   time.Time `json:"updatedAt"`
+					ID          string   `json:"id"`
+					Name        string   `json:"name"`
+					Version     string   `json:"version"`
+					Kind        string   `json:"kind"`
+					Purl        string   `json:"purl"`
+					Cpes        []string `json:"cpes"`
+					LicensesExp string   `json:"licensesExp"`
+					Group       string   `json:"group"`
+					Description string   `json:"description"`
+					Primary     bool     `json:"primary"`
+					Internal    bool     `json:"internal"`
+					SbomID      string   `json:"sbomId"`
+					Stats       *struct {
+						VulnStats      map[string]interface{} `json:"vulnStats"`
+						VulnTotalCount int                    `json:"vulnTotalCount"`
+					} `json:"stats"`
+					UpdatedAt time.Time `json:"updatedAt"`
 				} `json:"nodes"`
 				TotalCount int `json:"totalCount"`
 				PageInfo   struct {
@@ -342,6 +547,12 @@ func (c *Client) ListComponents(ctx context.Context, input ListComponentsInput) 
 			VersionID:   n.SbomID,
 			UpdatedAt:   n.UpdatedAt,
 		}
+		if n.Stats != nil {
+			components[i].VulnSummary = &ComponentVulnerabilitySummary{
+				TotalCount: n.Stats.VulnTotalCount,
+				Stats:      n.Stats.VulnStats,
+			}
+		}
 	}
 
 	return &ComponentsResult{
@@ -361,20 +572,24 @@ func (c *Client) GetComponent(ctx context.Context, id, versionID string) (*Versi
 
 	var result struct {
 		Component struct {
-			ID          string    `json:"id"`
-			Name        string    `json:"name"`
-			Version     string    `json:"version"`
-			Kind        string    `json:"kind"`
-			Purl        string    `json:"purl"`
-			Cpes        []string  `json:"cpes"`
-			LicensesExp string    `json:"licensesExp"`
-			Group       string    `json:"group"`
-			Description string    `json:"description"`
-			Primary     bool      `json:"primary"`
-			Internal    bool      `json:"internal"`
-			SbomID      string    `json:"sbomId"`
-			UpdatedAt   time.Time `json:"updatedAt"`
-			Sbom        struct {
+			ID          string   `json:"id"`
+			Name        string   `json:"name"`
+			Version     string   `json:"version"`
+			Kind        string   `json:"kind"`
+			Purl        string   `json:"purl"`
+			Cpes        []string `json:"cpes"`
+			LicensesExp string   `json:"licensesExp"`
+			Group       string   `json:"group"`
+			Description string   `json:"description"`
+			Primary     bool     `json:"primary"`
+			Internal    bool     `json:"internal"`
+			SbomID      string   `json:"sbomId"`
+			Stats       *struct {
+				VulnStats      map[string]interface{} `json:"vulnStats"`
+				VulnTotalCount int                    `json:"vulnTotalCount"`
+			} `json:"stats"`
+			UpdatedAt time.Time `json:"updatedAt"`
+			Sbom      struct {
 				ID             string `json:"id"`
 				ProjectVersion string `json:"projectVersion"`
 				Project        struct {
@@ -389,7 +604,7 @@ func (c *Client) GetComponent(ctx context.Context, id, versionID string) (*Versi
 		return nil, err
 	}
 
-	return &VersionComponent{
+	component := &VersionComponent{
 		ID:          result.Component.ID,
 		Name:        result.Component.Name,
 		Version:     result.Component.Version,
@@ -411,7 +626,14 @@ func (c *Client) GetComponent(ctx context.Context, id, versionID string) (*Versi
 				Name: result.Component.Sbom.Project.Name,
 			},
 		},
-	}, nil
+	}
+	if result.Component.Stats != nil {
+		component.VulnSummary = &ComponentVulnerabilitySummary{
+			TotalCount: result.Component.Stats.VulnTotalCount,
+			Stats:      result.Component.Stats.VulnStats,
+		}
+	}
+	return component, nil
 }
 
 // CompareVersions compares two versions and returns the differences

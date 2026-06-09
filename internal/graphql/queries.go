@@ -277,6 +277,47 @@ const (
 		}
 	`
 
+	// ProjectVersionsSearchQuery searches SBOM versions across the organization
+	ProjectVersionsSearchQuery = `
+		query SearchProjectVersions($search: String!, $first: Int, $after: String) {
+			projectVersions(search: $search, first: $first, after: $after) {
+				nodes {
+					id
+					projectVersion
+					spec
+					specVersion
+					format
+					lifecycle
+					createdAt
+					updatedAt
+					projectId
+					stats {
+						compCount
+						compPurlCount
+						compCpeCount
+						compLicenseCount
+						compSupplierCount
+						vulnStats
+					}
+					project {
+						id
+						name
+						projectGroupId
+						projectGroup {
+							id
+							name
+						}
+					}
+				}
+				totalCount
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+			}
+		}
+	`
+
 	// SbomQuery fetches a single SBOM by ID
 	SbomQuery = `
 		query GetSbom($sbomId: Uuid!) {
@@ -325,6 +366,10 @@ const (
 						primary
 						internal
 						sbomId
+						stats {
+							vulnStats
+							vulnTotalCount
+						}
 						updatedAt
 					}
 					totalCount
@@ -355,6 +400,10 @@ const (
 				primary
 				internal
 				sbomId
+				stats {
+					vulnStats
+					vulnTotalCount
+				}
 				updatedAt
 				sbom {
 					id
@@ -362,6 +411,25 @@ const (
 					project {
 						id
 						name
+					}
+				}
+			}
+		}
+	`
+
+	// SbomDownloadQuery fetches SBOM download readiness and content
+	SbomDownloadQuery = `
+		query DownloadSbom($sbomId: Uuid!, $spec: SbomSpec, $specVersion: String, $includeVulns: Boolean, $requireCompleted: [SbomProcessingStageEnum!]) {
+			sbom(sbomId: $sbomId) {
+				download(sbomId: $sbomId, spec: $spec, specVersion: $specVersion, includeVulns: $includeVulns, requireCompleted: $requireCompleted) {
+					ready
+					filename
+					contentType
+					content
+					processingStatus {
+						automation
+						policyScan
+						vulnScan
 					}
 				}
 			}

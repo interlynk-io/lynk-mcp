@@ -281,18 +281,24 @@ Expected impact: triage agents can write approved dispositions in one reviewable
 
 ### Phase 6: Data-quality and discovery improvements
 
-- [ ] Investigate why `fixedIn` is usually empty even though MCP requests it.
-- [ ] Confirm whether `fixedVersions` has better population and should be emphasized in responses.
-- [ ] Add direct version lookup by product name plus version string:
+- [x] Investigate why `fixedIn` is usually empty even though MCP requests it.
+- [x] Confirm whether `fixedVersions` has better population and should be emphasized in responses.
+- [x] Add direct version lookup by product name plus version string:
   - API has org-wide `project_versions` search by version string.
   - MCP still needs product/environment disambiguation for an exact lookup helper.
-- [ ] Add per-component vulnerability summary to `get_version`:
+- [x] Add per-component vulnerability summary to `get_version`:
   - Prefer API-side aggregation for performance.
   - Include severity counts and total count per component.
-- [ ] Add programmatic CycloneDX VEX export:
+- [x] Add programmatic CycloneDX VEX export:
   - API has `Sbom.download`; verify whether `include_vulns` plus CycloneDX spec/spec version satisfies CycloneDX VEX needs.
   - Return readiness/status plus content metadata or download content according to API behavior.
   - Include permission and expiration behavior in docs.
+
+Notes:
+- `fixedIn` is a VEX/edit field on `ComponentVuln` and may be empty when no disposition-specific fixed-in value has been recorded. The API also exposes `fixedVersions` from vulnerability intelligence; MCP now returns it alongside `fixedIn` and docs recommend preferring it when populated.
+- `find_version` uses the API's org-wide `projectVersions(search: ...)` resolver, then filters exact version string plus optional product and environment names.
+- `get_version` can include per-component vulnerability summaries with `include_component_vuln_summary=true`; summaries use the API's component `stats.vulnStats` and `stats.vulnTotalCount`.
+- `export_cyclonedx_vex` calls `Sbom.download` with `spec=CycloneDX`, `includeVulns=true`, and `requireCompleted=[VULN_SCAN]` by default. The API returns readiness, processing status, metadata, and inline content when ready; access and expiration behavior are controlled by the API's SBOM download authorization.
 
 ## Priority Recommendation
 
