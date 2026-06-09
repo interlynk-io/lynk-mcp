@@ -61,6 +61,43 @@ const (
 						organizationId
 						updatedAt
 						sbomsCount
+						importedRepository {
+							__typename
+							... on GithubRepository {
+								id
+								name
+								fullName
+								owner
+								defaultBranch
+								importStatus
+								webhookEnabled
+							}
+							... on BitbucketRepository {
+								id
+								name
+								fullName
+								slug
+								workspace
+								importStatus
+								webhookEnabled
+							}
+							... on GitlabRepository {
+								id
+								name
+								fullPath
+								gitlabId
+								importStatus
+								webhookEnabled
+							}
+						}
+						projects(first: 100) {
+							nodes {
+								externalIssueTrackerSettings {
+									provider
+									projectKey
+								}
+							}
+						}
 					}
 					totalCount
 					pageInfo {
@@ -85,6 +122,35 @@ const (
 				organizationId
 				updatedAt
 				sbomsCount
+				importedRepository {
+					__typename
+					... on GithubRepository {
+						id
+						name
+						fullName
+						owner
+						defaultBranch
+						importStatus
+						webhookEnabled
+					}
+					... on BitbucketRepository {
+						id
+						name
+						fullName
+						slug
+						workspace
+						importStatus
+						webhookEnabled
+					}
+					... on GitlabRepository {
+						id
+						name
+						fullPath
+						gitlabId
+						importStatus
+						webhookEnabled
+					}
+				}
 				projects(first: $projectsFirst, after: $projectsAfter) {
 					nodes {
 						id
@@ -93,6 +159,18 @@ const (
 						enabled
 						updatedAt
 						sbomsCount
+						externalIssueTrackerSettings {
+							id
+							provider
+							projectKey
+							issueType
+							assignee
+							reporter
+							epic
+							components
+							enableJiraSync
+							updatedAt
+						}
 					}
 					pageInfo {
 						hasNextPage
@@ -114,9 +192,50 @@ const (
 				projectGroupId
 				updatedAt
 				sbomsCount
+				externalIssueTrackerSettings {
+					id
+					provider
+					projectKey
+					issueType
+					assignee
+					reporter
+					epic
+					components
+					enableJiraSync
+					updatedAt
+				}
 				projectGroup {
 					id
 					name
+					importedRepository {
+						__typename
+						... on GithubRepository {
+							id
+							name
+							fullName
+							owner
+							defaultBranch
+							importStatus
+							webhookEnabled
+						}
+						... on BitbucketRepository {
+							id
+							name
+							fullName
+							slug
+							workspace
+							importStatus
+							webhookEnabled
+						}
+						... on GitlabRepository {
+							id
+							name
+							fullPath
+							gitlabId
+							importStatus
+							webhookEnabled
+						}
+					}
 				}
 			}
 		}

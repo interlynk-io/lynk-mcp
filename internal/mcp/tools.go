@@ -81,6 +81,12 @@ func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolReq
 			"versionsCount": p.VersionsCount,
 			"updatedAt":     p.UpdatedAt,
 		}
+		if p.Repository != nil {
+			products[i]["repository"] = formatImportedRepository(p.Repository)
+		}
+		if p.TicketingDefaultsSummary != nil {
+			products[i]["ticketingDefaultsSummary"] = formatTicketingDefaultsSummary(p.TicketingDefaultsSummary)
+		}
 	}
 
 	return formatResult(map[string]interface{}{
@@ -113,9 +119,12 @@ func (s *Server) handleGetProduct(ctx context.Context, request mcp.CallToolReque
 			"versionsCount": e.VersionsCount,
 			"updatedAt":     e.UpdatedAt,
 		}
+		if e.JiraDefaults != nil {
+			environments[i]["jiraDefaults"] = formatJiraDefaults(e.JiraDefaults)
+		}
 	}
 
-	return formatResult(map[string]interface{}{
+	result := map[string]interface{}{
 		"id":            product.ID,
 		"name":          product.Name,
 		"description":   product.Description,
@@ -123,7 +132,12 @@ func (s *Server) handleGetProduct(ctx context.Context, request mcp.CallToolReque
 		"versionsCount": product.VersionsCount,
 		"updatedAt":     product.UpdatedAt,
 		"environments":  environments,
-	})
+	}
+	if product.Repository != nil {
+		result["repository"] = formatImportedRepository(product.Repository)
+	}
+
+	return formatResult(result)
 }
 
 func (s *Server) handleListEnvironments(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -153,6 +167,9 @@ func (s *Server) handleListEnvironments(ctx context.Context, request mcp.CallToo
 			"versionsCount": e.VersionsCount,
 			"updatedAt":     e.UpdatedAt,
 		})
+		if e.JiraDefaults != nil {
+			environments[len(environments)-1]["jiraDefaults"] = formatJiraDefaults(e.JiraDefaults)
+		}
 	}
 
 	return formatResult(map[string]interface{}{
@@ -182,12 +199,19 @@ func (s *Server) handleGetEnvironment(ctx context.Context, request mcp.CallToolR
 		"versionsCount": environment.VersionsCount,
 		"updatedAt":     environment.UpdatedAt,
 	}
+	if environment.JiraDefaults != nil {
+		result["jiraDefaults"] = formatJiraDefaults(environment.JiraDefaults)
+	}
 
 	if environment.Product != nil {
-		result["product"] = map[string]interface{}{
+		product := map[string]interface{}{
 			"id":   environment.Product.ID,
 			"name": environment.Product.Name,
 		}
+		if environment.Product.Repository != nil {
+			product["repository"] = formatImportedRepository(environment.Product.Repository)
+		}
+		result["product"] = product
 	}
 
 	return formatResult(result)
@@ -1859,6 +1883,31 @@ func formatTicketingStatus(status *api.TicketingStatus) map[string]interface{} {
 	result["policies"] = policies
 	result["createdTickets"] = formatCreatedTickets(status.CreatedTickets)
 
+	return result
+}
+
+func formatTicketingDefaultsSummary(summary *api.TicketingDefaultsSummary) map[string]interface{} {
+	return map[string]interface{}{
+		"jiraConfigured":       summary.JiraConfigured,
+		"jiraProjectKeys":      summary.JiraProjectKeys,
+		"environmentsWithJira": summary.EnvironmentsWithJira,
+	}
+}
+
+func formatJiraDefaults(defaults *api.JiraDefaults) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":         defaults.ID,
+		"projectKey": defaults.ProjectKey,
+		"issueType":  defaults.IssueType,
+		"assignee":   defaults.Assignee,
+		"reporter":   defaults.Reporter,
+		"epic":       defaults.Epic,
+		"enableSync": defaults.EnableSync,
+		"updatedAt":  defaults.UpdatedAt,
+	}
+	if defaults.Components != nil {
+		result["components"] = defaults.Components
+	}
 	return result
 }
 

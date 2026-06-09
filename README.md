@@ -339,6 +339,8 @@ Add to `~/.config/zed/settings.json`:
 
 `list_products` supports cursor pagination with `limit` and `after`. Responses include `hasMore` and `endCursor`; pass `endCursor` as `after` to fetch the next page.
 
+Product responses include lightweight repository import metadata when available. `list_products` also includes a compact Jira defaults summary; `get_product`, `list_environments`, and `get_environment` include per-environment `jiraDefaults` without invoking the heavier ticketing status scan.
+
 ### Versions, SBOM Doctor & Components
 
 | Tool | Description |

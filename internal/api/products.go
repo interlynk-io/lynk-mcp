@@ -27,14 +27,16 @@ const getProductEnvironmentsPageSize = 100
 
 // Product represents a product (formerly project group)
 type Product struct {
-	ID             string
-	Name           string
-	Description    string
-	Enabled        bool
-	OrganizationID string
-	UpdatedAt      time.Time
-	VersionsCount  int
-	Environments   []Environment
+	ID                       string
+	Name                     string
+	Description              string
+	Enabled                  bool
+	OrganizationID           string
+	UpdatedAt                time.Time
+	VersionsCount            int
+	Repository               *ImportedRepository
+	TicketingDefaultsSummary *TicketingDefaultsSummary
+	Environments             []Environment
 }
 
 // Environment represents an environment (formerly project)
@@ -46,7 +48,28 @@ type Environment struct {
 	ProductID     string
 	UpdatedAt     time.Time
 	VersionsCount int
+	JiraDefaults  *JiraDefaults
 	Product       *Product
+}
+
+// TicketingDefaultsSummary contains compact per-product ticketing defaults.
+type TicketingDefaultsSummary struct {
+	JiraConfigured       bool
+	JiraProjectKeys      []string
+	EnvironmentsWithJira int
+}
+
+// JiraDefaults contains compact per-environment Jira defaults used for ticket creation.
+type JiraDefaults struct {
+	ID         string
+	ProjectKey string
+	IssueType  string
+	Assignee   string
+	Reporter   string
+	Epic       string
+	Components interface{}
+	EnableSync bool
+	UpdatedAt  time.Time
 }
 
 // ProductsResult represents the result of listing products
@@ -83,13 +106,19 @@ func (c *Client) ListProducts(ctx context.Context, input ListProductsInput) (*Pr
 		Organization struct {
 			ProjectGroups struct {
 				Nodes []struct {
-					ID             string    `json:"id"`
-					Name           string    `json:"name"`
-					Description    string    `json:"description"`
-					Enabled        bool      `json:"enabled"`
-					OrganizationID string    `json:"organizationId"`
-					UpdatedAt      time.Time `json:"updatedAt"`
-					SbomsCount     int       `json:"sbomsCount"`
+					ID                 string                 `json:"id"`
+					Name               string                 `json:"name"`
+					Description        string                 `json:"description"`
+					Enabled            bool                   `json:"enabled"`
+					OrganizationID     string                 `json:"organizationId"`
+					UpdatedAt          time.Time              `json:"updatedAt"`
+					SbomsCount         int                    `json:"sbomsCount"`
+					ImportedRepository *productRepositoryNode `json:"importedRepository"`
+					Projects           struct {
+						Nodes []struct {
+							ExternalIssueTrackerSettings []productIssueTrackerSettingNode `json:"externalIssueTrackerSettings"`
+						} `json:"nodes"`
+					} `json:"projects"`
 				} `json:"nodes"`
 				TotalCount int `json:"totalCount"`
 				PageInfo   struct {
@@ -107,13 +136,15 @@ func (c *Client) ListProducts(ctx context.Context, input ListProductsInput) (*Pr
 	products := make([]Product, len(result.Organization.ProjectGroups.Nodes))
 	for i, n := range result.Organization.ProjectGroups.Nodes {
 		products[i] = Product{
-			ID:             n.ID,
-			Name:           n.Name,
-			Description:    n.Description,
-			Enabled:        n.Enabled,
-			OrganizationID: n.OrganizationID,
-			UpdatedAt:      n.UpdatedAt,
-			VersionsCount:  n.SbomsCount,
+			ID:                       n.ID,
+			Name:                     n.Name,
+			Description:              n.Description,
+			Enabled:                  n.Enabled,
+			OrganizationID:           n.OrganizationID,
+			UpdatedAt:                n.UpdatedAt,
+			VersionsCount:            n.SbomsCount,
+			Repository:               mapProductRepository(n.ImportedRepository),
+			TicketingDefaultsSummary: summarizeTicketingDefaults(n.Projects.Nodes),
 		}
 	}
 
@@ -142,21 +173,23 @@ func (c *Client) GetProduct(ctx context.Context, id string) (*Product, error) {
 
 		var result struct {
 			ProjectGroup struct {
-				ID             string    `json:"id"`
-				Name           string    `json:"name"`
-				Description    string    `json:"description"`
-				Enabled        bool      `json:"enabled"`
-				OrganizationID string    `json:"organizationId"`
-				UpdatedAt      time.Time `json:"updatedAt"`
-				SbomsCount     int       `json:"sbomsCount"`
-				Projects       struct {
+				ID                 string                 `json:"id"`
+				Name               string                 `json:"name"`
+				Description        string                 `json:"description"`
+				Enabled            bool                   `json:"enabled"`
+				OrganizationID     string                 `json:"organizationId"`
+				UpdatedAt          time.Time              `json:"updatedAt"`
+				SbomsCount         int                    `json:"sbomsCount"`
+				ImportedRepository *productRepositoryNode `json:"importedRepository"`
+				Projects           struct {
 					Nodes []struct {
-						ID          string    `json:"id"`
-						Name        string    `json:"name"`
-						Description string    `json:"description"`
-						Enabled     bool      `json:"enabled"`
-						UpdatedAt   time.Time `json:"updatedAt"`
-						SbomsCount  int       `json:"sbomsCount"`
+						ID                           string                           `json:"id"`
+						Name                         string                           `json:"name"`
+						Description                  string                           `json:"description"`
+						Enabled                      bool                             `json:"enabled"`
+						UpdatedAt                    time.Time                        `json:"updatedAt"`
+						SbomsCount                   int                              `json:"sbomsCount"`
+						ExternalIssueTrackerSettings []productIssueTrackerSettingNode `json:"externalIssueTrackerSettings"`
 					} `json:"nodes"`
 					PageInfo struct {
 						HasNextPage bool   `json:"hasNextPage"`
@@ -179,6 +212,7 @@ func (c *Client) GetProduct(ctx context.Context, id string) (*Product, error) {
 				OrganizationID: result.ProjectGroup.OrganizationID,
 				UpdatedAt:      result.ProjectGroup.UpdatedAt,
 				VersionsCount:  result.ProjectGroup.SbomsCount,
+				Repository:     mapProductRepository(result.ProjectGroup.ImportedRepository),
 			}
 		}
 
@@ -191,6 +225,7 @@ func (c *Client) GetProduct(ctx context.Context, id string) (*Product, error) {
 				UpdatedAt:     p.UpdatedAt,
 				VersionsCount: p.SbomsCount,
 				ProductID:     result.ProjectGroup.ID,
+				JiraDefaults:  mapJiraDefaults(p.ExternalIssueTrackerSettings),
 			})
 		}
 
@@ -223,16 +258,18 @@ func (c *Client) GetEnvironment(ctx context.Context, id string) (*Environment, e
 
 	var result struct {
 		Project struct {
-			ID             string    `json:"id"`
-			Name           string    `json:"name"`
-			Description    string    `json:"description"`
-			Enabled        bool      `json:"enabled"`
-			ProjectGroupID string    `json:"projectGroupId"`
-			UpdatedAt      time.Time `json:"updatedAt"`
-			SbomsCount     int       `json:"sbomsCount"`
-			ProjectGroup   struct {
-				ID   string `json:"id"`
-				Name string `json:"name"`
+			ID                           string                           `json:"id"`
+			Name                         string                           `json:"name"`
+			Description                  string                           `json:"description"`
+			Enabled                      bool                             `json:"enabled"`
+			ProjectGroupID               string                           `json:"projectGroupId"`
+			UpdatedAt                    time.Time                        `json:"updatedAt"`
+			SbomsCount                   int                              `json:"sbomsCount"`
+			ExternalIssueTrackerSettings []productIssueTrackerSettingNode `json:"externalIssueTrackerSettings"`
+			ProjectGroup                 struct {
+				ID                 string                 `json:"id"`
+				Name               string                 `json:"name"`
+				ImportedRepository *productRepositoryNode `json:"importedRepository"`
 			} `json:"projectGroup"`
 		} `json:"project"`
 	}
@@ -244,8 +281,9 @@ func (c *Client) GetEnvironment(ctx context.Context, id string) (*Environment, e
 	var product *Product
 	if result.Project.ProjectGroup.ID != "" {
 		product = &Product{
-			ID:   result.Project.ProjectGroup.ID,
-			Name: result.Project.ProjectGroup.Name,
+			ID:         result.Project.ProjectGroup.ID,
+			Name:       result.Project.ProjectGroup.Name,
+			Repository: mapProductRepository(result.Project.ProjectGroup.ImportedRepository),
 		}
 	}
 
@@ -257,6 +295,108 @@ func (c *Client) GetEnvironment(ctx context.Context, id string) (*Environment, e
 		ProductID:     result.Project.ProjectGroupID,
 		UpdatedAt:     result.Project.UpdatedAt,
 		VersionsCount: result.Project.SbomsCount,
+		JiraDefaults:  mapJiraDefaults(result.Project.ExternalIssueTrackerSettings),
 		Product:       product,
 	}, nil
+}
+
+type productRepositoryNode struct {
+	Type           string `json:"__typename"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	FullName       string `json:"fullName"`
+	Owner          string `json:"owner"`
+	DefaultBranch  string `json:"defaultBranch"`
+	Slug           string `json:"slug"`
+	Workspace      string `json:"workspace"`
+	FullPath       string `json:"fullPath"`
+	GitlabID       string `json:"gitlabId"`
+	ImportStatus   string `json:"importStatus"`
+	WebhookEnabled bool   `json:"webhookEnabled"`
+}
+
+type productIssueTrackerSettingNode struct {
+	ID             string      `json:"id"`
+	Provider       string      `json:"provider"`
+	ProjectKey     string      `json:"projectKey"`
+	IssueType      string      `json:"issueType"`
+	Assignee       string      `json:"assignee"`
+	Reporter       string      `json:"reporter"`
+	Epic           string      `json:"epic"`
+	Components     interface{} `json:"components"`
+	EnableJiraSync bool        `json:"enableJiraSync"`
+	UpdatedAt      time.Time   `json:"updatedAt"`
+}
+
+func mapProductRepository(node *productRepositoryNode) *ImportedRepository {
+	if node == nil {
+		return nil
+	}
+	return &ImportedRepository{
+		Type:           node.Type,
+		ID:             node.ID,
+		Name:           node.Name,
+		FullName:       node.FullName,
+		Owner:          node.Owner,
+		DefaultBranch:  node.DefaultBranch,
+		Slug:           node.Slug,
+		Workspace:      node.Workspace,
+		FullPath:       node.FullPath,
+		GitlabID:       node.GitlabID,
+		ImportStatus:   node.ImportStatus,
+		WebhookEnabled: node.WebhookEnabled,
+	}
+}
+
+func mapJiraDefaults(settings []productIssueTrackerSettingNode) *JiraDefaults {
+	for _, setting := range settings {
+		if setting.Provider != "jira" {
+			continue
+		}
+		return &JiraDefaults{
+			ID:         setting.ID,
+			ProjectKey: setting.ProjectKey,
+			IssueType:  setting.IssueType,
+			Assignee:   setting.Assignee,
+			Reporter:   setting.Reporter,
+			Epic:       setting.Epic,
+			Components: setting.Components,
+			EnableSync: setting.EnableJiraSync,
+			UpdatedAt:  setting.UpdatedAt,
+		}
+	}
+	return nil
+}
+
+func summarizeTicketingDefaults(environments []struct {
+	ExternalIssueTrackerSettings []productIssueTrackerSettingNode `json:"externalIssueTrackerSettings"`
+}) *TicketingDefaultsSummary {
+	keys := map[string]bool{}
+	environmentsWithJira := 0
+	for _, env := range environments {
+		hasJira := false
+		for _, setting := range env.ExternalIssueTrackerSettings {
+			if setting.Provider != "jira" {
+				continue
+			}
+			hasJira = true
+			if setting.ProjectKey != "" {
+				keys[setting.ProjectKey] = true
+			}
+		}
+		if hasJira {
+			environmentsWithJira++
+		}
+	}
+
+	summary := &TicketingDefaultsSummary{
+		JiraConfigured:       environmentsWithJira > 0,
+		JiraProjectKeys:      []string{},
+		EnvironmentsWithJira: environmentsWithJira,
+	}
+	for key := range keys {
+		summary.JiraProjectKeys = append(summary.JiraProjectKeys, key)
+	}
+	sort.Strings(summary.JiraProjectKeys)
+	return summary
 }

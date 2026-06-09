@@ -41,11 +41,83 @@ func (f *fakeLynkClient) ListProducts(ctx context.Context, input api.ListProduct
 				Description:   "First product",
 				Enabled:       true,
 				VersionsCount: 7,
+				Repository: &api.ImportedRepository{
+					Type:           "GithubRepository",
+					ID:             "repo-1",
+					Name:           "repo",
+					FullName:       "org/repo",
+					ImportStatus:   "completed",
+					WebhookEnabled: true,
+				},
+				TicketingDefaultsSummary: &api.TicketingDefaultsSummary{
+					JiraConfigured:       true,
+					JiraProjectKeys:      []string{"SEC"},
+					EnvironmentsWithJira: 1,
+				},
 			},
 		},
 		TotalCount:  3,
 		HasNextPage: true,
 		EndCursor:   "cursor-2",
+	}, nil
+}
+
+func (f *fakeLynkClient) GetProduct(ctx context.Context, id string) (*api.Product, error) {
+	return &api.Product{
+		ID:            id,
+		Name:          "Product 1",
+		Description:   "First product",
+		Enabled:       true,
+		VersionsCount: 7,
+		Repository: &api.ImportedRepository{
+			Type:           "BitbucketRepository",
+			ID:             "repo-1",
+			Name:           "repo",
+			FullName:       "workspace/repo",
+			ImportStatus:   "completed",
+			WebhookEnabled: true,
+		},
+		Environments: []api.Environment{
+			{
+				ID:            "env-1",
+				Name:          "default",
+				Enabled:       true,
+				VersionsCount: 1,
+				JiraDefaults: &api.JiraDefaults{
+					ID:         "jira-setting",
+					ProjectKey: "SEC",
+					IssueType:  "10001",
+					EnableSync: true,
+				},
+			},
+		},
+	}, nil
+}
+
+func (f *fakeLynkClient) GetEnvironment(ctx context.Context, id string) (*api.Environment, error) {
+	return &api.Environment{
+		ID:            id,
+		Name:          "default",
+		Enabled:       true,
+		ProductID:     "product-1",
+		VersionsCount: 1,
+		JiraDefaults: &api.JiraDefaults{
+			ID:         "jira-setting",
+			ProjectKey: "SEC",
+			IssueType:  "10001",
+			EnableSync: true,
+		},
+		Product: &api.Product{
+			ID:   "product-1",
+			Name: "Product 1",
+			Repository: &api.ImportedRepository{
+				Type:         "BitbucketRepository",
+				ID:           "repo-1",
+				Name:         "repo",
+				FullName:     "workspace/repo",
+				ImportStatus: "completed",
+			},
+		},
 	}, nil
 }
 
@@ -124,6 +196,61 @@ func TestHandleListProducts_PassesAfterAndReturnsEndCursor(t *testing.T) {
 	}
 	if output["hasMore"] != true {
 		t.Fatalf("hasMore = %#v, want true", output["hasMore"])
+	}
+	products := output["products"].([]interface{})
+	product := products[0].(map[string]interface{})
+	repository := product["repository"].(map[string]interface{})
+	if repository["importStatus"] != "completed" || repository["fullName"] != "org/repo" {
+		t.Fatalf("unexpected repository output: %#v", repository)
+	}
+	summary := product["ticketingDefaultsSummary"].(map[string]interface{})
+	if summary["jiraConfigured"] != true {
+		t.Fatalf("unexpected ticketing summary output: %#v", summary)
+	}
+}
+
+func TestHandleGetProduct_ReturnsRepositoryAndJiraDefaults(t *testing.T) {
+	server := &Server{client: &fakeLynkClient{}}
+	result, err := server.handleGetProduct(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{"id": "product-1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleGetProduct returned error: %v", err)
+	}
+	output := toolResultMap(t, result)
+	repository := output["repository"].(map[string]interface{})
+	if repository["type"] != "BitbucketRepository" || repository["importStatus"] != "completed" {
+		t.Fatalf("unexpected repository output: %#v", repository)
+	}
+	environments := output["environments"].([]interface{})
+	env := environments[0].(map[string]interface{})
+	defaults := env["jiraDefaults"].(map[string]interface{})
+	if defaults["projectKey"] != "SEC" || defaults["enableSync"] != true {
+		t.Fatalf("unexpected Jira defaults output: %#v", defaults)
+	}
+}
+
+func TestHandleGetEnvironment_ReturnsJiraDefaultsAndProductRepository(t *testing.T) {
+	server := &Server{client: &fakeLynkClient{}}
+	result, err := server.handleGetEnvironment(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{"id": "env-1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleGetEnvironment returned error: %v", err)
+	}
+	output := toolResultMap(t, result)
+	defaults := output["jiraDefaults"].(map[string]interface{})
+	if defaults["projectKey"] != "SEC" || defaults["enableSync"] != true {
+		t.Fatalf("unexpected Jira defaults output: %#v", defaults)
+	}
+	product := output["product"].(map[string]interface{})
+	repository := product["repository"].(map[string]interface{})
+	if repository["type"] != "BitbucketRepository" || repository["importStatus"] != "completed" {
+		t.Fatalf("unexpected product repository output: %#v", repository)
 	}
 }
 
