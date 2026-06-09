@@ -23,9 +23,9 @@ import (
 
 // Config controls retry behavior.
 type Config struct {
-	MaxRetries   int
-	InitialDelay time.Duration
-	MaxDelay     time.Duration
+	MaxRetries    int
+	InitialDelay  time.Duration
+	MaxDelay      time.Duration
 	BackoffFactor float64
 }
 
@@ -37,17 +37,6 @@ func DefaultTransientConfig() Config {
 		InitialDelay:  1 * time.Second,
 		MaxDelay:      10 * time.Second,
 		BackoffFactor: 2.0,
-	}
-}
-
-// DefaultVerifyConfig returns a config for the verify command retry loop
-// (24 retries, 10s initial, 15s max, 1.5x backoff, ~6 min total).
-func DefaultVerifyConfig() Config {
-	return Config{
-		MaxRetries:    24,
-		InitialDelay:  10 * time.Second,
-		MaxDelay:      15 * time.Second,
-		BackoffFactor: 1.5,
 	}
 }
 

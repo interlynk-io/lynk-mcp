@@ -17,6 +17,16 @@ package graphql
 // GraphQL query strings for the Lynk API
 
 const (
+	// BasicOrganizationQuery fetches the minimal organization information used
+	// by quick connection checks.
+	BasicOrganizationQuery = `
+		query GetBasicOrganization {
+			organization {
+				name
+			}
+		}
+	`
+
 	// OrganizationQuery fetches organization information with metrics
 	OrganizationQuery = `
 		query GetOrganization {
