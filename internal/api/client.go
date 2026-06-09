@@ -57,6 +57,24 @@ type OrganizationMetrics struct {
 	VulnsMetric    map[string]interface{}
 }
 
+// GetBasicOrganization fetches minimal organization information for quick
+// connection checks.
+func (c *Client) GetBasicOrganization(ctx context.Context) (*Organization, error) {
+	var result struct {
+		Organization struct {
+			Name string `json:"name"`
+		} `json:"organization"`
+	}
+
+	if err := c.gql.Execute(ctx, graphql.BasicOrganizationQuery, nil, &result); err != nil {
+		return nil, err
+	}
+
+	return &Organization{
+		Name: result.Organization.Name,
+	}, nil
+}
+
 // GetOrganization fetches the current organization information
 func (c *Client) GetOrganization(ctx context.Context) (*Organization, error) {
 	var result struct {

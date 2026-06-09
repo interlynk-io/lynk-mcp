@@ -21,11 +21,13 @@ import (
 )
 
 type fakeGraphQLExecutor struct {
+	queries  []string
 	requests []map[string]interface{}
 	pages    []string
 }
 
 func (f *fakeGraphQLExecutor) Execute(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
+	f.queries = append(f.queries, query)
 	f.requests = append(f.requests, variables)
 	return json.Unmarshal([]byte(f.pages[len(f.requests)-1]), result)
 }
