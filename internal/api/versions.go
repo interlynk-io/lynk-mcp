@@ -104,11 +104,20 @@ type VersionSearchInput struct {
 
 // DownloadSBOMInput contains parameters for SBOM downloads.
 type DownloadSBOMInput struct {
-	VersionID        string
-	Spec             string
-	SpecVersion      string
-	IncludeVulns     *bool
-	RequireCompleted []string
+	VersionID                 string
+	Spec                      string
+	SpecVersion               string
+	IncludeVulns              *bool
+	IncludeFiles              *bool
+	Lite                      *bool
+	DontPackageSBOM           *bool
+	Original                  *bool
+	ExcludeParts              *bool
+	IncludeSupportStatus      *bool
+	SupportLevelOnly          *bool
+	RedactInternalComponents  *bool
+	TLPClassificationOverride string
+	RequireCompleted          []string
 }
 
 // DownloadSBOMResult contains SBOM download readiness, metadata, and content.
@@ -205,6 +214,8 @@ type ListVersionsInput struct {
 	First         int
 	After         string
 	Lifecycle     []string
+	OrderByField  string
+	OrderByDir    string
 }
 
 // ListVersions fetches versions for an environment
@@ -222,6 +233,12 @@ func (c *Client) ListVersions(ctx context.Context, input ListVersionsInput) (*Ve
 	}
 	if len(input.Lifecycle) > 0 {
 		vars["lifestage"] = input.Lifecycle
+	}
+	if input.OrderByField != "" && input.OrderByDir != "" {
+		vars["orderBy"] = map[string]interface{}{
+			"field":     input.OrderByField,
+			"direction": input.OrderByDir,
+		}
 	}
 
 	var result struct {
@@ -417,6 +434,33 @@ func (c *Client) DownloadSBOM(ctx context.Context, input DownloadSBOMInput) (*Do
 	}
 	if input.IncludeVulns != nil {
 		vars["includeVulns"] = *input.IncludeVulns
+	}
+	if input.IncludeFiles != nil {
+		vars["includeFiles"] = *input.IncludeFiles
+	}
+	if input.Lite != nil {
+		vars["lite"] = *input.Lite
+	}
+	if input.DontPackageSBOM != nil {
+		vars["dontPackageSbom"] = *input.DontPackageSBOM
+	}
+	if input.Original != nil {
+		vars["original"] = *input.Original
+	}
+	if input.ExcludeParts != nil {
+		vars["excludeParts"] = *input.ExcludeParts
+	}
+	if input.IncludeSupportStatus != nil {
+		vars["includeSupportStatus"] = *input.IncludeSupportStatus
+	}
+	if input.SupportLevelOnly != nil {
+		vars["supportLevelOnly"] = *input.SupportLevelOnly
+	}
+	if input.RedactInternalComponents != nil {
+		vars["redactInternalComponents"] = *input.RedactInternalComponents
+	}
+	if input.TLPClassificationOverride != "" {
+		vars["tlpClassificationOverride"] = input.TLPClassificationOverride
 	}
 	if len(input.RequireCompleted) > 0 {
 		vars["requireCompleted"] = input.RequireCompleted

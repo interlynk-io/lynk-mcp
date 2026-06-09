@@ -16,8 +16,10 @@ package mcp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/interlynk-io/lynk-mcp/internal/api"
@@ -355,52 +357,178 @@ func (s *Server) handleFindVersion(ctx context.Context, request mcp.CallToolRequ
 	return formatResult(output)
 }
 
-func (s *Server) handleExportCycloneDXVex(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Server) handleDownloadSBOM(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
-	versionID, ok := args["version_id"].(string)
-	if !ok || versionID == "" {
-		return newToolResultError("Missing required parameter: version_id"), nil
+	versionID := strings.TrimSpace(stringParam(args, "version_id"))
+	var resolvedVersion map[string]interface{}
+	if versionID == "" {
+		version, err := s.resolveDownloadVersion(ctx, args)
+		if err != nil {
+			return newToolResultError(err.Error()), nil
+		}
+		versionID = version.ID
+		resolvedVersion = formatVersionSummary(version)
 	}
 
-	includeVulns := true
-	specVersion := stringParam(args, "spec_version")
-	if specVersion == "" {
-		specVersion = "1.6"
+	input := api.DownloadSBOMInput{
+		VersionID:                 versionID,
+		Spec:                      strings.TrimSpace(stringParam(args, "spec")),
+		SpecVersion:               strings.TrimSpace(stringParam(args, "spec_version")),
+		IncludeVulns:              getBoolPtrParam(args, "include_vulns"),
+		IncludeFiles:              getBoolPtrParam(args, "include_files"),
+		Lite:                      getBoolPtrParam(args, "lite"),
+		DontPackageSBOM:           getBoolPtrParam(args, "dont_package_sbom"),
+		Original:                  getBoolPtrParam(args, "original"),
+		ExcludeParts:              getBoolPtrParam(args, "exclude_parts"),
+		IncludeSupportStatus:      getBoolPtrParam(args, "include_support_status"),
+		SupportLevelOnly:          getBoolPtrParam(args, "support_level_only"),
+		RedactInternalComponents:  getBoolPtrParam(args, "redact_internal_components"),
+		TLPClassificationOverride: strings.TrimSpace(stringParam(args, "tlp_classification_override")),
+		RequireCompleted:          compactStrings(getStringSliceParam(args, "require_completed")),
 	}
-	requireCompleted := []string{"VULN_SCAN"}
-	if require, ok := args["require_vuln_scan_complete"].(bool); ok && !require {
-		requireCompleted = nil
-	}
-
-	download, err := s.client.DownloadSBOM(ctx, api.DownloadSBOMInput{
-		VersionID:        versionID,
-		Spec:             "CycloneDX",
-		SpecVersion:      specVersion,
-		IncludeVulns:     &includeVulns,
-		RequireCompleted: requireCompleted,
-	})
+	download, err := s.client.DownloadSBOM(ctx, input)
 	if err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to export CycloneDX VEX: %v", err)), nil
+		return newToolResultError(fmt.Sprintf("Failed to download SBOM: %v", err)), nil
 	}
 
 	includeContent := true
 	if val, ok := args["include_content"].(bool); ok {
 		includeContent = val
 	}
+	output := formatDownloadResult(download, includeContent)
+	output["versionId"] = versionID
+	if input.Spec != "" {
+		output["spec"] = input.Spec
+	}
+	if input.SpecVersion != "" {
+		output["specVersion"] = input.SpecVersion
+	}
+	if input.IncludeVulns != nil {
+		output["includeVulns"] = *input.IncludeVulns
+	}
+	if resolvedVersion != nil {
+		output["resolvedVersion"] = resolvedVersion
+	}
+	return formatResult(output)
+}
+
+func (s *Server) resolveDownloadVersion(ctx context.Context, args map[string]interface{}) (*api.Version, error) {
+	environmentID := strings.TrimSpace(stringParam(args, "environment_id"))
+	if environmentID == "" {
+		productID := strings.TrimSpace(stringParam(args, "product_id"))
+		if productID == "" {
+			productName := strings.TrimSpace(stringParam(args, "product_name"))
+			if productName == "" {
+				return nil, fmt.Errorf("missing required parameter: version_id or product_id/product_name")
+			}
+			product, err := s.findProductByName(ctx, productName)
+			if err != nil {
+				return nil, err
+			}
+			productID = product.ID
+		}
+
+		product, err := s.client.GetProduct(ctx, productID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get product for latest version lookup: %w", err)
+		}
+		environmentID, err = selectEnvironmentID(product.Environments, strings.TrimSpace(stringParam(args, "environment_name")))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	versions, err := s.client.ListVersions(ctx, api.ListVersionsInput{
+		EnvironmentID: environmentID,
+		First:         getIntParam(args, "latest_version_limit", 100),
+		OrderByField:  "SBOMS_UPDATED_AT",
+		OrderByDir:    "DESC",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list versions for latest version lookup: %w", err)
+	}
+	versionString := strings.TrimSpace(stringParam(args, "version"))
+	var selected *api.Version
+	for i := range versions.Versions {
+		version := &versions.Versions[i]
+		if versionString != "" && version.Version != versionString {
+			continue
+		}
+		if selected == nil || versionNewer(version, selected) {
+			selected = version
+		}
+	}
+	if selected == nil {
+		if versionString != "" {
+			return nil, fmt.Errorf("no version %q found in environment %s", versionString, environmentID)
+		}
+		return nil, fmt.Errorf("no versions found in environment %s", environmentID)
+	}
+	return selected, nil
+}
+
+func (s *Server) findProductByName(ctx context.Context, name string) (*api.Product, error) {
+	products, err := s.client.ListProducts(ctx, api.ListProductsInput{Search: name, First: 50})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find product %q: %w", name, err)
+	}
+	var matches []api.Product
+	for _, product := range products.Products {
+		if sameName(product.Name, name) {
+			matches = append(matches, product)
+		}
+	}
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("no product found with exact name %q", name)
+	}
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("multiple products found with exact name %q; use product_id", name)
+	}
+	return &matches[0], nil
+}
+
+func selectEnvironmentID(environments []api.Environment, environmentName string) (string, error) {
+	if environmentName != "" {
+		for _, environment := range environments {
+			if sameName(environment.Name, environmentName) {
+				return environment.ID, nil
+			}
+		}
+		return "", fmt.Errorf("no environment found with exact name %q", environmentName)
+	}
+	for _, environment := range environments {
+		if sameName(environment.Name, "production") {
+			return environment.ID, nil
+		}
+	}
+	if len(environments) == 1 {
+		return environments[0].ID, nil
+	}
+	return "", fmt.Errorf("environment_name or environment_id is required when the product has %d environments and no production environment was found", len(environments))
+}
+
+func versionNewer(candidate, current *api.Version) bool {
+	if !candidate.UpdatedAt.IsZero() || !current.UpdatedAt.IsZero() {
+		return candidate.UpdatedAt.After(current.UpdatedAt)
+	}
+	if !candidate.CreatedAt.IsZero() || !current.CreatedAt.IsZero() {
+		return candidate.CreatedAt.After(current.CreatedAt)
+	}
+	return candidate.Version > current.Version
+}
+
+func formatDownloadResult(download *api.DownloadSBOMResult, includeContent bool) map[string]interface{} {
 	output := map[string]interface{}{
 		"ready":            download.Ready,
 		"filename":         download.Filename,
 		"contentType":      download.ContentType,
 		"contentLength":    len(download.Content),
 		"processingStatus": download.ProcessingStatus,
-		"spec":             "CycloneDX",
-		"specVersion":      specVersion,
-		"includeVulns":     true,
 	}
 	if includeContent {
 		output["content"] = download.Content
 	}
-	return formatResult(output)
+	return output
 }
 
 func (s *Server) handleListDoctorResults(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -742,7 +870,9 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 	var result *api.ComponentVulnsResult
 	var matchReasons map[string][]string
 	var err error
-	if filters.MatchAny {
+	if len(input.ComponentIDs) > 0 || input.Purl != "" {
+		result, matchReasons, err = s.listVersionVulnsByComponentIdentity(ctx, input, filters)
+	} else if filters.MatchAny {
 		result, matchReasons, err = s.listVersionVulnsAny(ctx, input, filters)
 	} else {
 		query := input
@@ -758,9 +888,6 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 				result.TotalCount = len(result.ComponentVulns)
 				result.ComponentVulns = limitComponentVulns(result.ComponentVulns, input.First)
 				result.HasNextPage = result.HasNextPage || result.TotalCount > len(result.ComponentVulns)
-			}
-			if len(input.ComponentIDs) > 0 || input.Purl != "" {
-				result.TotalCount = len(result.ComponentVulns)
 			}
 		}
 	}
@@ -1689,6 +1816,74 @@ func (f vulnerabilityMetadataFilters) HasClientSideThresholds() bool {
 	return f.CvssMin != nil || f.CvssMax != nil
 }
 
+func (s *Server) listVersionVulnsByComponentIdentity(ctx context.Context, input api.ListVersionVulnsInput, filters vulnerabilityMetadataFilters) (*api.ComponentVulnsResult, map[string][]string, error) {
+	offset, err := decodeFilteredCursor(input.After)
+	if err != nil {
+		return nil, nil, err
+	}
+	limit := input.First
+	if limit <= 0 {
+		limit = 50
+	}
+
+	query := input
+	query.After = ""
+	query.First = 100
+	query.ComponentIDs = nil
+	query.Purl = ""
+	if filters.MatchAny {
+		query.Kev = nil
+		query.EpssMin = nil
+		query.EpssMax = nil
+	}
+
+	var page []api.ComponentVuln
+	total := 0
+	for {
+		result, err := s.client.ListVersionVulns(ctx, query)
+		if err != nil {
+			return nil, nil, err
+		}
+		if query.After != "" && result.EndCursor == query.After {
+			break
+		}
+
+		filtered := result.ComponentVulns
+		if filters.MatchAny {
+			filtered = filterComponentVulnsByAnyMatch(filtered, filters)
+		} else {
+			filtered = filterComponentVulnsByClientThresholds(filtered, filters)
+		}
+		filtered = filterComponentVulnsByComponentIdentity(filtered, input.ComponentIDs, input.Purl)
+		for _, vuln := range filtered {
+			total++
+			if total <= offset {
+				continue
+			}
+			if len(page) < limit {
+				page = append(page, vuln)
+			}
+		}
+
+		if !result.HasNextPage || result.EndCursor == "" {
+			break
+		}
+		query.After = result.EndCursor
+	}
+
+	consumed := offset + len(page)
+	endCursor := ""
+	if len(page) > 0 {
+		endCursor = encodeFilteredCursor(consumed)
+	}
+	return &api.ComponentVulnsResult{
+		ComponentVulns: page,
+		TotalCount:     total,
+		HasNextPage:    total > consumed,
+		EndCursor:      endCursor,
+	}, matchReasonsForComponentVulns(page, filters), nil
+}
+
 func (s *Server) listVersionVulnsAny(ctx context.Context, input api.ListVersionVulnsInput, filters vulnerabilityMetadataFilters) (*api.ComponentVulnsResult, map[string][]string, error) {
 	merged := make(map[string]api.ComponentVuln)
 	reasons := make(map[string][]string)
@@ -1832,6 +2027,28 @@ func limitComponentVulns(vulns []api.ComponentVuln, limit int) []api.ComponentVu
 	return vulns[:limit]
 }
 
+func decodeFilteredCursor(cursor string) (int, error) {
+	if cursor == "" {
+		return 0, nil
+	}
+	if offset, err := strconv.Atoi(cursor); err == nil && offset >= 0 {
+		return offset, nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, fmt.Errorf("invalid filtered cursor %q", cursor)
+	}
+	offset, err := strconv.Atoi(string(decoded))
+	if err != nil || offset < 0 {
+		return 0, fmt.Errorf("invalid filtered cursor %q", cursor)
+	}
+	return offset, nil
+}
+
+func encodeFilteredCursor(offset int) string {
+	return base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(offset)))
+}
+
 func vulnerabilityAnyQueryLimit(limit int) int {
 	if limit <= 0 {
 		limit = 50
@@ -1842,6 +2059,19 @@ func vulnerabilityAnyQueryLimit(limit int) int {
 func filterComponentVulnsByClientThresholds(vulns []api.ComponentVuln, filters vulnerabilityMetadataFilters) []api.ComponentVuln {
 	vulns = filterComponentVulnsByCvss(vulns, filters)
 	return vulns
+}
+
+func filterComponentVulnsByAnyMatch(vulns []api.ComponentVuln, filters vulnerabilityMetadataFilters) []api.ComponentVuln {
+	if !filters.MatchAny {
+		return vulns
+	}
+	filtered := make([]api.ComponentVuln, 0, len(vulns))
+	for _, vuln := range vulns {
+		if len(componentVulnMatchReasons(vuln, filters)) > 0 {
+			filtered = append(filtered, vuln)
+		}
+	}
+	return filtered
 }
 
 func filterComponentVulnsByComponentIdentity(vulns []api.ComponentVuln, componentIDs []string, purl string) []api.ComponentVuln {

@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/interlynk-io/lynk-mcp/internal/api"
 	mcpg "github.com/mark3labs/mcp-go/mcp"
@@ -28,7 +29,10 @@ type fakeLynkClient struct {
 	lynkClient
 	listProductsInput           api.ListProductsInput
 	listVersionVulnsInput       api.ListVersionVulnsInput
+	listVersionVulnsInputs      []api.ListVersionVulnsInput
+	listVersionVulnsResults     map[string]*api.ComponentVulnsResult
 	listComponentVulnsInput     api.ListComponentVulnsInput
+	listVersionsInput           api.ListVersionsInput
 	searchVersionsInput         api.VersionSearchInput
 	listComponentsInput         api.ListComponentsInput
 	downloadSBOMInput           api.DownloadSBOMInput
@@ -85,7 +89,7 @@ func (f *fakeLynkClient) GetProduct(ctx context.Context, id string) (*api.Produc
 		Environments: []api.Environment{
 			{
 				ID:            "env-1",
-				Name:          "default",
+				Name:          "production",
 				Enabled:       true,
 				VersionsCount: 1,
 				JiraDefaults: &api.JiraDefaults{
@@ -96,6 +100,30 @@ func (f *fakeLynkClient) GetProduct(ctx context.Context, id string) (*api.Produc
 				},
 			},
 		},
+	}, nil
+}
+
+func (f *fakeLynkClient) ListVersions(ctx context.Context, input api.ListVersionsInput) (*api.VersionsResult, error) {
+	f.listVersionsInput = input
+	return &api.VersionsResult{
+		Versions: []api.Version{
+			{
+				ID:            "version-old",
+				Version:       "1.0.0",
+				EnvironmentID: input.EnvironmentID,
+				CreatedAt:     time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+				UpdatedAt:     time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+			},
+			{
+				ID:            "version-new",
+				Version:       "1.0.1",
+				EnvironmentID: input.EnvironmentID,
+				CreatedAt:     time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC),
+				UpdatedAt:     time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		TotalCount:  2,
+		HasNextPage: false,
 	}, nil
 }
 
@@ -224,6 +252,12 @@ func (f *fakeLynkClient) DownloadSBOM(ctx context.Context, input api.DownloadSBO
 
 func (f *fakeLynkClient) ListVersionVulns(ctx context.Context, input api.ListVersionVulnsInput) (*api.ComponentVulnsResult, error) {
 	f.listVersionVulnsInput = input
+	f.listVersionVulnsInputs = append(f.listVersionVulnsInputs, input)
+	if f.listVersionVulnsResults != nil {
+		if result, ok := f.listVersionVulnsResults[input.After]; ok {
+			return result, nil
+		}
+	}
 	return &api.ComponentVulnsResult{
 		ComponentVulns: []api.ComponentVuln{
 			{
@@ -551,45 +585,92 @@ func TestHandleFindVersion_FiltersExactProductAndEnvironment(t *testing.T) {
 	}
 }
 
-func TestHandleExportCycloneDXVex_PassesDownloadOptions(t *testing.T) {
+func TestHandleDownloadSBOM_PassesGenericDownloadOptions(t *testing.T) {
 	client := &fakeLynkClient{}
 	server := &Server{client: client}
-	result, err := server.handleExportCycloneDXVex(context.Background(), mcpg.CallToolRequest{
+	result, err := server.handleDownloadSBOM(context.Background(), mcpg.CallToolRequest{
 		Params: mcpg.CallToolParams{
 			Arguments: map[string]interface{}{
-				"version_id":                 "version-1",
-				"spec_version":               "1.6",
-				"include_content":            false,
-				"require_vuln_scan_complete": true,
+				"version_id":                  "version-1",
+				"spec":                        "SPDX",
+				"spec_version":                "2.3",
+				"include_vulns":               true,
+				"include_files":               true,
+				"lite":                        true,
+				"dont_package_sbom":           true,
+				"original":                    false,
+				"exclude_parts":               true,
+				"include_support_status":      true,
+				"support_level_only":          false,
+				"redact_internal_components":  true,
+				"tlp_classification_override": "AMBER",
+				"require_completed":           []interface{}{"AUTOMATION", "VULN_SCAN"},
+				"include_content":             false,
 			},
 		},
 	})
 	if err != nil {
-		t.Fatalf("handleExportCycloneDXVex returned error: %v", err)
+		t.Fatalf("handleDownloadSBOM returned error: %v", err)
 	}
 	if result.IsError {
-		t.Fatalf("handleExportCycloneDXVex returned tool error: %#v", result.Content)
+		t.Fatalf("handleDownloadSBOM returned tool error: %#v", result.Content)
 	}
 	input := client.downloadSBOMInput
-	if input.VersionID != "version-1" || input.Spec != "CycloneDX" || input.SpecVersion != "1.6" {
+	if input.VersionID != "version-1" || input.Spec != "SPDX" || input.SpecVersion != "2.3" {
 		t.Fatalf("unexpected DownloadSBOM input: %#v", input)
 	}
-	if input.IncludeVulns == nil || !*input.IncludeVulns {
-		t.Fatalf("IncludeVulns = %#v, want true", input.IncludeVulns)
+	if input.IncludeVulns == nil || !*input.IncludeVulns || input.IncludeFiles == nil || !*input.IncludeFiles {
+		t.Fatalf("expected vuln/files options to be true: %#v", input)
 	}
-	if !reflect.DeepEqual(input.RequireCompleted, []string{"VULN_SCAN"}) {
-		t.Fatalf("RequireCompleted = %#v, want VULN_SCAN", input.RequireCompleted)
+	if input.Original == nil || *input.Original || input.SupportLevelOnly == nil || *input.SupportLevelOnly {
+		t.Fatalf("expected explicit false options to be preserved: %#v", input)
+	}
+	if input.TLPClassificationOverride != "AMBER" || !reflect.DeepEqual(input.RequireCompleted, []string{"AUTOMATION", "VULN_SCAN"}) {
+		t.Fatalf("unexpected advanced options: %#v", input)
 	}
 
 	output := toolResultMap(t, result)
-	if output["ready"] != true || output["filename"] != "bom.cdx.json" {
-		t.Fatalf("unexpected export output: %#v", output)
+	if output["versionId"] != "version-1" || output["contentLength"] != float64(len(`{"bomFormat":"CycloneDX"}`)) {
+		t.Fatalf("unexpected output: %#v", output)
 	}
 	if _, ok := output["content"]; ok {
 		t.Fatalf("content should be omitted when include_content=false: %#v", output)
 	}
-	if output["contentLength"] != float64(len(`{"bomFormat":"CycloneDX"}`)) {
-		t.Fatalf("unexpected contentLength: %#v", output["contentLength"])
+}
+
+func TestHandleDownloadSBOM_ResolvesLatestVersionByProductName(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleDownloadSBOM(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"product_name":     "Product 1",
+				"environment_name": "production",
+				"include_content":  false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleDownloadSBOM returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleDownloadSBOM returned tool error: %#v", result.Content)
+	}
+	if client.listProductsInput.Search != "Product 1" {
+		t.Fatalf("unexpected ListProducts input: %#v", client.listProductsInput)
+	}
+	if client.downloadSBOMInput.VersionID != "version-new" {
+		t.Fatalf("download version = %q, want latest version-new", client.downloadSBOMInput.VersionID)
+	}
+	if client.listVersionsInput.OrderByField != "SBOMS_UPDATED_AT" || client.listVersionsInput.OrderByDir != "DESC" {
+		t.Fatalf("expected latest lookup to request updated-at descending order: %#v", client.listVersionsInput)
+	}
+	output := toolResultMap(t, result)
+	if output["versionId"] != "version-new" {
+		t.Fatalf("unexpected output version: %#v", output)
+	}
+	if _, ok := output["resolvedVersion"].(map[string]interface{}); !ok {
+		t.Fatalf("expected resolvedVersion in output: %#v", output)
 	}
 }
 
@@ -612,11 +693,8 @@ func TestHandleListVulnerabilities_FiltersByComponentIDAndPurl(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handleListVulnerabilities returned tool error: %#v", result.Content)
 	}
-	if !reflect.DeepEqual(client.listVersionVulnsInput.ComponentIDs, []string{"component-1"}) {
-		t.Fatalf("ComponentIDs = %#v, want component-1", client.listVersionVulnsInput.ComponentIDs)
-	}
-	if client.listVersionVulnsInput.Purl != "pkg:generic/openssl@3.0.0" {
-		t.Fatalf("Purl = %#v, want openssl purl", client.listVersionVulnsInput.Purl)
+	if len(client.listVersionVulnsInput.ComponentIDs) != 0 || client.listVersionVulnsInput.Purl != "" {
+		t.Fatalf("component identity filters should be applied before MCP pagination, not forwarded to ListVersionVulns: %#v", client.listVersionVulnsInput)
 	}
 
 	output := toolResultMap(t, result)
@@ -634,6 +712,114 @@ func TestHandleListVulnerabilities_FiltersByComponentIDAndPurl(t *testing.T) {
 	}
 	if component["sbomId"] != "version-1" || component["versionId"] != "version-1" {
 		t.Fatalf("missing stable version identifiers: %#v", component)
+	}
+}
+
+func TestHandleListVulnerabilities_ComponentFilterScansBeforePaging(t *testing.T) {
+	mkVuln := func(id, componentID, purl string) api.ComponentVuln {
+		return api.ComponentVuln{
+			ID:          id,
+			ComponentID: componentID,
+			VersionID:   "version-1",
+			Component: &api.VersionComponent{
+				ID:        componentID,
+				Name:      "axios",
+				Version:   "0.30.0",
+				Purl:      purl,
+				VersionID: "version-1",
+			},
+			Vuln: &api.Vuln{
+				ID:       "vuln-" + id,
+				VulnID:   "CVE-2026-" + id,
+				Severity: "high",
+			},
+		}
+	}
+	client := &fakeLynkClient{
+		listVersionVulnsResults: map[string]*api.ComponentVulnsResult{
+			"": {
+				ComponentVulns: []api.ComponentVuln{
+					mkVuln("1", "component-1", "pkg:generic/openssl@3.0.0"),
+				},
+				TotalCount:  4,
+				HasNextPage: true,
+				EndCursor:   "api-cursor-1",
+			},
+			"api-cursor-1": {
+				ComponentVulns: []api.ComponentVuln{
+					mkVuln("2", "axios-component", "pkg:npm/axios@0.30.0"),
+					mkVuln("3", "axios-component", "pkg:npm/axios@0.30.0"),
+					mkVuln("4", "axios-component", "pkg:npm/axios@0.30.0"),
+				},
+				TotalCount:  4,
+				HasNextPage: false,
+				EndCursor:   "api-cursor-2",
+			},
+		},
+	}
+	server := &Server{client: client}
+
+	result, err := server.handleListVulnerabilities(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"version_id": "version-1",
+				"purl":       "pkg:npm/axios@0.30.0",
+				"limit":      2,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListVulnerabilities returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListVulnerabilities returned tool error: %#v", result.Content)
+	}
+
+	output := toolResultMap(t, result)
+	vulns := output["vulnerabilities"].([]interface{})
+	if len(vulns) != 2 {
+		t.Fatalf("len(vulnerabilities) = %d, want 2", len(vulns))
+	}
+	if output["totalCount"] != float64(3) || output["hasMore"] != true || output["endCursor"] != "Mg==" {
+		t.Fatalf("unexpected filtered pagination output: %#v", output)
+	}
+	if len(client.listVersionVulnsInputs) != 2 {
+		t.Fatalf("ListVersionVulns call count = %d, want 2", len(client.listVersionVulnsInputs))
+	}
+	firstInput := client.listVersionVulnsInputs[0]
+	if firstInput.First != 100 || firstInput.After != "" || firstInput.Purl != "" || len(firstInput.ComponentIDs) != 0 {
+		t.Fatalf("unexpected first ListVersionVulns input: %#v", firstInput)
+	}
+	secondInput := client.listVersionVulnsInputs[1]
+	if secondInput.After != "api-cursor-1" {
+		t.Fatalf("second page After = %#v, want api-cursor-1", secondInput.After)
+	}
+
+	client.listVersionVulnsInputs = nil
+	result, err = server.handleListVulnerabilities(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"version_id": "version-1",
+				"purl":       "pkg:npm/axios@0.30.0",
+				"limit":      2,
+				"after":      "Mg==",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListVulnerabilities returned error on second filtered page: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListVulnerabilities returned tool error on second filtered page: %#v", result.Content)
+	}
+
+	output = toolResultMap(t, result)
+	vulns = output["vulnerabilities"].([]interface{})
+	if len(vulns) != 1 {
+		t.Fatalf("len(second page vulnerabilities) = %d, want 1", len(vulns))
+	}
+	if output["totalCount"] != float64(3) || output["hasMore"] != false || output["endCursor"] != "Mw==" {
+		t.Fatalf("unexpected second filtered pagination output: %#v", output)
 	}
 }
 

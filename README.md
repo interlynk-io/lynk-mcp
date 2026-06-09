@@ -341,33 +341,39 @@ Add to `~/.config/zed/settings.json`:
 
 Product responses include lightweight repository import metadata when available. `list_products` also includes a compact Jira defaults summary; `get_product`, `list_environments`, and `get_environment` include per-environment `jiraDefaults` without invoking the heavier ticketing status scan.
 
-### Versions, SBOM Doctor & Components
+### Versions & SBOM
 
 | Tool | Description |
 |------|-------------|
 | `list_versions` | List versions in an environment |
 | `get_version` | Get version details with statistics |
 | `find_version` | Find versions by exact version string with optional product/environment disambiguation |
-| `export_cyclonedx_vex` | Export CycloneDX SBOM content with vulnerabilities for VEX workflows |
-| `list_doctor_results` | List SBOM Doctor findings for a version |
+| `download_sbom` | Download SBOM content with configurable format, vulnerabilities, files, lite/original, support status, and latest-version lookup |
 | `compare_versions` | Compare two versions and show drift analysis |
+
+`get_version` can include a per-component vulnerability summary with `include_component_vuln_summary=true`. `download_sbom` returns `ready`, processing status, filename/content type, content length, and content unless `include_content=false`; provide `version_id` directly or product/environment details to resolve the latest version.
+
+### SBOM Doctor
+
+| Tool | Description |
+|------|-------------|
+| `list_doctor_results` | List SBOM Doctor findings for a version |
+
+### Components
+
+| Tool | Description |
+|------|-------------|
 | `list_components` | List components in a version |
 | `get_component` | Get component details |
 | `update_component` | Update component metadata; requires `confirm=true` |
 | `update_component_supplier` | Update component supplier metadata; requires `confirm=true` |
 
-`get_version` can include a per-component vulnerability summary with `include_component_vuln_summary=true`. `export_cyclonedx_vex` returns `ready`, processing status, filename/content type, content length, and content unless `include_content=false`.
-
-### Vulnerabilities & VEX
+### Vulnerabilities
 
 | Tool | Description |
 |------|-------------|
 | `list_vulnerabilities` | List vulnerabilities in a version with optional filters |
 | `get_vulnerability` | Get vulnerability details by CVE or UUID |
-| `list_vex_statuses` | List VEX statuses with UUIDs for CVE triage |
-| `list_vex_justifications` | List VEX justifications with UUIDs for CVE triage |
-| `update_component_vex` | Update VEX data for a component vulnerability; requires `confirm=true` |
-| `bulk_update_component_vex` | Update VEX data for multiple component vulnerabilities with one shared payload; requires `confirm=true` |
 | `search_vulnerabilities` | Search across all products |
 
 `list_vulnerabilities` supports cursor pagination with `limit` and `after`. Responses include `hasMore` and `endCursor`; pass `endCursor` as `after` to fetch the next page.
@@ -375,6 +381,15 @@ Product responses include lightweight repository import metadata when available.
 `list_vulnerabilities` can filter a version by `component_id` or exact component `purl`. `search_vulnerabilities` can filter across the organization by `component_id`, `component_ids`, or exact `purl`, and supports `after`/`endCursor` pagination.
 
 Vulnerability responses include both `fixedIn` and `fixedVersions`; prefer `fixedVersions` when present because it is structured.
+
+### VEX
+
+| Tool | Description |
+|------|-------------|
+| `list_vex_statuses` | List VEX statuses with UUIDs for CVE triage |
+| `list_vex_justifications` | List VEX justifications with UUIDs for CVE triage |
+| `update_component_vex` | Update VEX data for a component vulnerability; requires `confirm=true` |
+| `bulk_update_component_vex` | Update VEX data for multiple component vulnerabilities with one shared payload; requires `confirm=true` |
 
 ### Supply-Chain Security Incidents
 
@@ -396,17 +411,27 @@ Vulnerability responses include both `fixedIn` and `fixedVersions`; prefer `fixe
 | `dry_run_security_incident_impact_scan` | Queue a dry-run impact scan for an incident; requires `confirm=true` |
 | `get_security_incident_dry_run_result` | Get latest dry-run impact scan results |
 
-### Policies & Compliance
+### Policies
 
 | Tool | Description |
 |------|-------------|
 | `list_policies` | List security policies |
 | `get_policy` | Get policy details with rules |
 | `list_policy_violations` | List policy evaluation results |
+
+### Ticketing
+
+| Tool | Description |
+|------|-------------|
 | `get_ticketing_status` | Get ticketing provider connection and policy application status |
-| `list_licenses` | List licenses with filtering |
 
 `get_ticketing_status` supports independent cursors for products, policies, and created-ticket scans with `products_after`, `policies_after`, and `ticket_links_after`. Responses include `productsEndCursor`, `policiesEndCursor`, and `ticketsEndCursor`. Set `include_created_tickets=false` for configuration-only lookups that should skip the component vulnerability ticket-link scan.
+
+### Licenses
+
+| Tool | Description |
+|------|-------------|
+| `list_licenses` | List licenses with filtering |
 
 ## Available Resources
 
