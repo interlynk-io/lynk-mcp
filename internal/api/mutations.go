@@ -134,6 +134,29 @@ type UpdateComponentVexResult struct {
 	Errors        []string
 }
 
+// BulkUpdateComponentVexInput contains shared VEX fields for multiple component vulnerabilities.
+type BulkUpdateComponentVexInput struct {
+	ComponentVulnIDs                   []string
+	CurrentVersionID                   *string
+	VexStatusID                        *string
+	VexJustificationID                 *string
+	CDXResponseID                      *string
+	Note                               *string
+	Impact                             *string
+	Detail                             *string
+	Action                             *string
+	FixedIn                            *string
+	PropagateVex                       *bool
+	ResolutionDate                     *string
+	ComponentVulnCustomFieldAttributes *[]ComponentVulnCustomFieldAttributeInput
+}
+
+// BulkUpdateComponentVexResult contains the bulk VEX mutation result.
+type BulkUpdateComponentVexResult struct {
+	ComponentVulns []ComponentVuln
+	Errors         []string
+}
+
 // UpdateComponent updates mutable component metadata.
 func (c *Client) UpdateComponent(ctx context.Context, input UpdateComponentInput) (*UpdateComponentResult, error) {
 	vars := map[string]interface{}{
@@ -356,6 +379,86 @@ func (c *Client) UpdateComponentVex(ctx context.Context, input UpdateComponentVe
 			}
 		}
 		updateResult.ComponentVuln = componentVuln
+	}
+
+	return updateResult, nil
+}
+
+// BulkUpdateComponentVex updates VEX data for multiple component vulnerabilities.
+func (c *Client) BulkUpdateComponentVex(ctx context.Context, input BulkUpdateComponentVexInput) (*BulkUpdateComponentVexResult, error) {
+	vars := map[string]interface{}{
+		"componentVulnIds": input.ComponentVulnIDs,
+	}
+	addStringVar(vars, "currentSbomId", input.CurrentVersionID)
+	addStringVar(vars, "vexStatusId", input.VexStatusID)
+	addStringVar(vars, "vexJustificationId", input.VexJustificationID)
+	addStringVar(vars, "cdxResponseId", input.CDXResponseID)
+	addStringVar(vars, "note", input.Note)
+	addStringVar(vars, "impact", input.Impact)
+	addStringVar(vars, "detail", input.Detail)
+	addStringVar(vars, "action", input.Action)
+	addStringVar(vars, "fixedIn", input.FixedIn)
+	addBoolVar(vars, "propagateVex", input.PropagateVex)
+	addStringVar(vars, "resolutionDate", input.ResolutionDate)
+	if input.ComponentVulnCustomFieldAttributes != nil {
+		vars["componentVulnCustomFieldAttributes"] = *input.ComponentVulnCustomFieldAttributes
+	}
+
+	var result struct {
+		ComponentVexBulkUpdate struct {
+			ComponentVulns []struct {
+				ID          string `json:"id"`
+				ComponentID string `json:"componentId"`
+				VulnID      string `json:"vulnId"`
+				SbomID      string `json:"sbomId"`
+				FixedIn     string `json:"fixedIn"`
+				Detail      string `json:"detail"`
+				Impact      string `json:"impact"`
+				ActionStmt  string `json:"actionStmt"`
+				VexStatus   *struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"vexStatus"`
+				VexJustification *struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"vexJustification"`
+			} `json:"componentVulns"`
+			Errors []string `json:"errors"`
+		} `json:"componentVexBulkUpdate"`
+	}
+
+	if err := c.gql.Execute(ctx, graphql.ComponentVexBulkUpdateMutation, vars, &result); err != nil {
+		return nil, err
+	}
+
+	mutation := result.ComponentVexBulkUpdate
+	updateResult := &BulkUpdateComponentVexResult{Errors: mutation.Errors}
+	updateResult.ComponentVulns = make([]ComponentVuln, len(mutation.ComponentVulns))
+	for i, node := range mutation.ComponentVulns {
+		componentVuln := ComponentVuln{
+			ID:          node.ID,
+			ComponentID: node.ComponentID,
+			VulnID:      node.VulnID,
+			VersionID:   node.SbomID,
+			FixedIn:     node.FixedIn,
+			Detail:      node.Detail,
+			Impact:      node.Impact,
+			ActionStmt:  node.ActionStmt,
+		}
+		if node.VexStatus != nil {
+			componentVuln.VexStatus = &VexStatus{
+				ID:   node.VexStatus.ID,
+				Name: node.VexStatus.Name,
+			}
+		}
+		if node.VexJustification != nil {
+			componentVuln.VexJustification = &VexJustification{
+				ID:   node.VexJustification.ID,
+				Name: node.VexJustification.Name,
+			}
+		}
+		updateResult.ComponentVulns[i] = componentVuln
 	}
 
 	return updateResult, nil

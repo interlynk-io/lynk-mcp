@@ -826,6 +826,57 @@ func (s *Server) handleUpdateComponentVex(ctx context.Context, request mcp.CallT
 	return formatResult(formatComponentVuln(result.ComponentVuln))
 }
 
+func (s *Server) handleBulkUpdateComponentVex(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for bulk_update_component_vex"), nil
+	}
+
+	componentVulnIDs := getStringSliceParam(args, "component_vuln_ids")
+	componentVulnIDs = compactStrings(componentVulnIDs)
+	if len(componentVulnIDs) == 0 {
+		return newToolResultError("Missing required parameter: component_vuln_ids"), nil
+	}
+	if !hasAnyParam(args, "vex_status_id", "vex_status", "vex_justification_id", "vex_justification", "cdx_response_id", "note", "impact", "detail", "action", "fixed_in", "propagate_vex", "resolution_date", "component_vuln_custom_field_attributes") {
+		return newToolResultError("No update fields provided"), nil
+	}
+
+	customFields, err := getComponentVulnCustomFieldInputsParam(args, "component_vuln_custom_field_attributes")
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+
+	vexStatusID, err := s.resolveVexStatusID(ctx, args)
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+	vexJustificationID, err := s.resolveVexJustificationID(ctx, args)
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+
+	result, err := s.client.BulkUpdateComponentVex(ctx, api.BulkUpdateComponentVexInput{
+		ComponentVulnIDs:                   componentVulnIDs,
+		CurrentVersionID:                   getStringPtrParam(args, "current_version_id"),
+		VexStatusID:                        vexStatusID,
+		VexJustificationID:                 vexJustificationID,
+		CDXResponseID:                      getStringPtrParam(args, "cdx_response_id"),
+		Note:                               getStringPtrParam(args, "note"),
+		Impact:                             getStringPtrParam(args, "impact"),
+		Detail:                             getStringPtrParam(args, "detail"),
+		Action:                             getStringPtrParam(args, "action"),
+		FixedIn:                            getStringPtrParam(args, "fixed_in"),
+		PropagateVex:                       getBoolPtrParam(args, "propagate_vex"),
+		ResolutionDate:                     getStringPtrParam(args, "resolution_date"),
+		ComponentVulnCustomFieldAttributes: customFields,
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to bulk update component VEX: %v", err)), nil
+	}
+
+	return formatResult(formatBulkComponentVexResult(componentVulnIDs, result))
+}
+
 func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	filters := getVulnerabilityMetadataFilters(args)
@@ -2168,6 +2219,20 @@ func getStringSliceParam(args map[string]interface{}, key string) []string {
 	return nil
 }
 
+func compactStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
 func confirmed(args map[string]interface{}) bool {
 	confirm, ok := args["confirm"].(bool)
 	return ok && confirm
@@ -2725,6 +2790,40 @@ func formatComponentVuln(componentVuln *api.ComponentVuln) map[string]interface{
 		}
 	}
 	return result
+}
+
+func formatBulkComponentVexResult(requestedIDs []string, result *api.BulkUpdateComponentVexResult) map[string]interface{} {
+	updatedByID := make(map[string]api.ComponentVuln, len(result.ComponentVulns))
+	updated := make([]map[string]interface{}, len(result.ComponentVulns))
+	for i, componentVuln := range result.ComponentVulns {
+		updatedByID[componentVuln.ID] = componentVuln
+		updated[i] = formatComponentVuln(&componentVuln)
+	}
+
+	failed := make([]map[string]interface{}, 0)
+	for _, id := range requestedIDs {
+		if _, ok := updatedByID[id]; ok {
+			continue
+		}
+		failure := map[string]interface{}{
+			"componentVulnId": id,
+		}
+		if len(result.Errors) > 0 {
+			failure["errors"] = result.Errors
+		} else {
+			failure["errors"] = []string{"API returned no updated component vulnerability for requested ID"}
+		}
+		failed = append(failed, failure)
+	}
+
+	return map[string]interface{}{
+		"requestedCount": len(requestedIDs),
+		"updatedCount":   len(updated),
+		"failedCount":    len(failed),
+		"updated":        updated,
+		"failed":         failed,
+		"errors":         result.Errors,
+	}
 }
 
 func formatDoctorResults(versionID string, result *api.DoctorResultsResult) map[string]interface{} {

@@ -265,12 +265,17 @@ Expected impact: customers can enumerate all findings for a component and perfor
 ### Phase 5: Bulk VEX write
 
 - [x] Existing API bulk mutations found: `component_vex_bulk_update` and `vuln_vex_bulk_update`.
-- [ ] Add MCP client support for the existing API bulk mutation rather than designing a new API mutation first.
-- [ ] Decide whether the accepted payload should be native Interlynk update input, OpenVEX-like statements, CSAF-like statements, or a small normalized wrapper.
-- [ ] Add `bulk_update_component_vex` MCP tool with `confirm=true`.
-- [ ] Return per-item success/error results; avoid all-or-nothing unless the API guarantees transaction semantics.
-- [ ] Add partial failure tests.
-- [ ] Add rate-limit and retry behavior appropriate for bulk writes.
+- [x] Add MCP client support for the existing API bulk mutation rather than designing a new API mutation first.
+- [x] Decide whether the accepted payload should be native Interlynk update input, OpenVEX-like statements, CSAF-like statements, or a small normalized wrapper.
+- [x] Add `bulk_update_component_vex` MCP tool with `confirm=true`.
+- [x] Return per-item success/error results; avoid all-or-nothing unless the API guarantees transaction semantics.
+- [x] Add partial failure tests.
+- [x] Add rate-limit and retry behavior appropriate for bulk writes.
+
+Notes:
+- `bulk_update_component_vex` uses the existing `componentVexBulkUpdate` API mutation with a small MCP wrapper: `component_vuln_ids` plus the same shared update fields as `update_component_vex`.
+- The tool returns requested, updated, and failed counts. Updated items are returned as component vulnerability records; requested IDs missing from the API response are reported as failed with API errors when present.
+- Bulk writes are sent as one API mutation rather than a client-side loop. Existing GraphQL transient retry handling covers 5xx, HTTP 429, and network-level failures.
 
 Expected impact: triage agents can write approved dispositions in one reviewable operation instead of issuing many single-finding mutations.
 

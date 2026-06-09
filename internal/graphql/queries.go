@@ -454,6 +454,35 @@ const (
 		}
 	`
 
+	// ComponentVexBulkUpdateMutation updates VEX data for multiple component vulnerabilities
+	ComponentVexBulkUpdateMutation = `
+		mutation BulkUpdateComponentVex($componentVulnIds: [Uuid!]!, $currentSbomId: Uuid, $vexStatusId: Uuid, $vexJustificationId: Uuid, $cdxResponseId: Uuid, $note: String, $impact: String, $detail: String, $action: String, $fixedIn: String, $propagateVex: Boolean, $resolutionDate: ISO8601Date, $componentVulnCustomFieldAttributes: [ComponentVulnCustomFieldAttributesInput!]) {
+			componentVexBulkUpdate(
+				input: {componentVulnIds: $componentVulnIds, currentSbomId: $currentSbomId, vexStatusId: $vexStatusId, vexJustificationId: $vexJustificationId, cdxResponseId: $cdxResponseId, note: $note, impact: $impact, detail: $detail, action: $action, fixedIn: $fixedIn, propagateVex: $propagateVex, resolutionDate: $resolutionDate, componentVulnCustomFieldAttributes: $componentVulnCustomFieldAttributes}
+			) {
+				componentVulns {
+					id
+					componentId
+					vulnId
+					sbomId
+					fixedIn
+					detail
+					impact
+					actionStmt
+					vexStatus {
+						id
+						name
+					}
+					vexJustification {
+						id
+						name
+					}
+				}
+				errors
+			}
+		}
+	`
+
 	// SbomVulnsQuery fetches vulnerabilities for an SBOM
 	SbomVulnsQuery = `
 		query GetSbomVulns($sbomId: Uuid!, $first: Int, $after: String, $severity: [String!], $status: [String!], $kev: Boolean, $epss: RangeInput, $search: String) {
