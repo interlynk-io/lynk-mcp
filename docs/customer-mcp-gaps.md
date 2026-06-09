@@ -229,11 +229,11 @@ Expected impact: fixes the unreachable products problem and separates config dis
 
 ### Phase 3: Lightweight ticketing fields on product tools
 
-- [ ] Extend product GraphQL queries to include `importedRepository.importStatus` where schema permits it.
-- [ ] Add a compact JIRA config projection to `get_product` and `get_environment` if `externalIssueTrackerSettings` is available on those API types.
-- [ ] If UI review finds a product-level abstraction over environment settings, add explicit fields with names that match the API model rather than overloading `issueTrackerSettings`.
-- [ ] Keep `list_products` response compact; include only repo import status and default ticketing summary, not full environment settings for every product.
-- [ ] Add tests for GitHub, GitLab, Bitbucket, and nil repository cases.
+- [x] Extend product GraphQL queries to include `importedRepository.importStatus` where schema permits it.
+- [x] Add a compact JIRA config projection to `get_product` and `get_environment` if `externalIssueTrackerSettings` is available on those API types.
+- [x] If UI review finds a product-level abstraction over environment settings, add explicit fields with names that match the API model rather than overloading `issueTrackerSettings`.
+- [x] Keep `list_products` response compact; include only repo import status and default ticketing summary, not full environment settings for every product.
+- [x] Add tests for GitHub, GitLab, Bitbucket, and nil repository cases.
 
 Expected impact: customers can inspect repo import status and JIRA defaults without invoking heavy ticketing status scans.
 
