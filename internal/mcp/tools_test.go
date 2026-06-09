@@ -28,6 +28,7 @@ type fakeLynkClient struct {
 	lynkClient
 	listProductsInput     api.ListProductsInput
 	listVersionVulnsInput api.ListVersionVulnsInput
+	ticketingStatusInput  api.TicketingStatusInput
 }
 
 func (f *fakeLynkClient) ListProducts(ctx context.Context, input api.ListProductsInput) (*api.ProductsResult, error) {
@@ -70,6 +71,21 @@ func (f *fakeLynkClient) ListVersionVulns(ctx context.Context, input api.ListVer
 		TotalCount:  4,
 		HasNextPage: true,
 		EndCursor:   "vuln-cursor-2",
+	}, nil
+}
+
+func (f *fakeLynkClient) GetTicketingStatus(ctx context.Context, input api.TicketingStatusInput) (*api.TicketingStatus, error) {
+	f.ticketingStatusInput = input
+	return &api.TicketingStatus{
+		ProductsTotalCount:  178,
+		ProductsHasNextPage: true,
+		ProductsEndCursor:   "products-cursor-2",
+		PoliciesTotalCount:  6,
+		PoliciesHasNextPage: true,
+		PoliciesEndCursor:   "policies-cursor-2",
+		TicketsScannedCount: 500,
+		TicketsHasNextPage:  true,
+		TicketsEndCursor:    "tickets-cursor-2",
 	}, nil
 }
 
@@ -150,6 +166,59 @@ func TestHandleListVulnerabilities_PassesAfterAndReturnsEndCursor(t *testing.T) 
 	}
 	if output["hasMore"] != true {
 		t.Fatalf("hasMore = %#v, want true", output["hasMore"])
+	}
+}
+
+func TestHandleGetTicketingStatus_PassesCursorsAndIncludeCreatedTickets(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleGetTicketingStatus(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"product_id":              "product-1",
+				"products_limit":          25,
+				"products_after":          "products-cursor-1",
+				"policies_limit":          10,
+				"policies_after":          "policies-cursor-1",
+				"ticket_links_limit":      5,
+				"ticket_links_after":      "tickets-cursor-1",
+				"include_created_tickets": false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleGetTicketingStatus returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleGetTicketingStatus returned tool error: %#v", result.Content)
+	}
+
+	input := client.ticketingStatusInput
+	if input.ProductID != "product-1" {
+		t.Fatalf("ProductID = %#v, want product-1", input.ProductID)
+	}
+	if input.ProductsFirst != 25 || input.ProductsAfter != "products-cursor-1" {
+		t.Fatalf("unexpected products input: %#v", input)
+	}
+	if input.PoliciesFirst != 10 || input.PoliciesAfter != "policies-cursor-1" {
+		t.Fatalf("unexpected policies input: %#v", input)
+	}
+	if input.TicketsFirst != 5 || input.TicketsAfter != "tickets-cursor-1" {
+		t.Fatalf("unexpected tickets input: %#v", input)
+	}
+	if input.IncludeCreatedTickets == nil || *input.IncludeCreatedTickets {
+		t.Fatalf("IncludeCreatedTickets = %#v, want false", input.IncludeCreatedTickets)
+	}
+
+	output := toolResultMap(t, result)
+	for key, want := range map[string]interface{}{
+		"productsEndCursor": "products-cursor-2",
+		"policiesEndCursor": "policies-cursor-2",
+		"ticketsEndCursor":  "tickets-cursor-2",
+	} {
+		if output[key] != want {
+			t.Fatalf("%s = %#v, want %#v", key, output[key], want)
+		}
 	}
 }
 

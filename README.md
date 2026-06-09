@@ -395,6 +395,8 @@ Add to `~/.config/zed/settings.json`:
 | `get_ticketing_status` | Get ticketing provider connection and policy application status |
 | `list_licenses` | List licenses with filtering |
 
+`get_ticketing_status` supports independent cursors for products, policies, and created-ticket scans with `products_after`, `policies_after`, and `ticket_links_after`. Responses include `productsEndCursor`, `policiesEndCursor`, and `ticketsEndCursor`. Set `include_created_tickets=false` for configuration-only lookups that should skip the component vulnerability ticket-link scan.
+
 ## Available Resources
 
 | Resource URI | Description |
