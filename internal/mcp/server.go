@@ -247,6 +247,7 @@ func (s *Server) registerTools() {
 		mcp.WithBoolean("exceptional", mcp.Description("Shortcut for match_mode=any with cvss_min=9.0, epss_min=0.05, or kev=true")),
 		mcp.WithString("search", mcp.Description("Search term to filter vulnerabilities")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page")),
 	), s.handleListVulnerabilities)
 
 	s.mcp.AddTool(mcp.NewTool("get_vulnerability",

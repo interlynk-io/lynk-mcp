@@ -26,7 +26,8 @@ import (
 
 type fakeLynkClient struct {
 	lynkClient
-	listProductsInput api.ListProductsInput
+	listProductsInput     api.ListProductsInput
+	listVersionVulnsInput api.ListVersionVulnsInput
 }
 
 func (f *fakeLynkClient) ListProducts(ctx context.Context, input api.ListProductsInput) (*api.ProductsResult, error) {
@@ -44,6 +45,31 @@ func (f *fakeLynkClient) ListProducts(ctx context.Context, input api.ListProduct
 		TotalCount:  3,
 		HasNextPage: true,
 		EndCursor:   "cursor-2",
+	}, nil
+}
+
+func (f *fakeLynkClient) ListVersionVulns(ctx context.Context, input api.ListVersionVulnsInput) (*api.ComponentVulnsResult, error) {
+	f.listVersionVulnsInput = input
+	return &api.ComponentVulnsResult{
+		ComponentVulns: []api.ComponentVuln{
+			{
+				ID:        "component-vuln-1",
+				VersionID: input.VersionID,
+				Component: &api.VersionComponent{
+					ID:      "component-1",
+					Name:    "openssl",
+					Version: "3.0.0",
+				},
+				Vuln: &api.Vuln{
+					ID:       "vuln-1",
+					VulnID:   "CVE-2026-0001",
+					Severity: "high",
+				},
+			},
+		},
+		TotalCount:  4,
+		HasNextPage: true,
+		EndCursor:   "vuln-cursor-2",
 	}, nil
 }
 
@@ -79,6 +105,48 @@ func TestHandleListProducts_PassesAfterAndReturnsEndCursor(t *testing.T) {
 	output := toolResultMap(t, result)
 	if output["endCursor"] != "cursor-2" {
 		t.Fatalf("endCursor = %#v, want cursor-2", output["endCursor"])
+	}
+	if output["hasMore"] != true {
+		t.Fatalf("hasMore = %#v, want true", output["hasMore"])
+	}
+}
+
+func TestHandleListVulnerabilities_PassesAfterAndReturnsEndCursor(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleListVulnerabilities(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"version_id": "version-1",
+				"limit":      2,
+				"after":      "vuln-cursor-1",
+				"severity":   "high",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListVulnerabilities returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListVulnerabilities returned tool error: %#v", result.Content)
+	}
+
+	if client.listVersionVulnsInput.VersionID != "version-1" {
+		t.Fatalf("VersionID = %#v, want version-1", client.listVersionVulnsInput.VersionID)
+	}
+	if client.listVersionVulnsInput.After != "vuln-cursor-1" {
+		t.Fatalf("After = %#v, want vuln-cursor-1", client.listVersionVulnsInput.After)
+	}
+	if client.listVersionVulnsInput.First != 2 {
+		t.Fatalf("First = %#v, want 2", client.listVersionVulnsInput.First)
+	}
+	if !reflect.DeepEqual(client.listVersionVulnsInput.Severity, []string{"high"}) {
+		t.Fatalf("Severity = %#v, want high", client.listVersionVulnsInput.Severity)
+	}
+
+	output := toolResultMap(t, result)
+	if output["endCursor"] != "vuln-cursor-2" {
+		t.Fatalf("endCursor = %#v, want vuln-cursor-2", output["endCursor"])
 	}
 	if output["hasMore"] != true {
 		t.Fatalf("hasMore = %#v, want true", output["hasMore"])

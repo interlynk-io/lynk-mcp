@@ -610,6 +610,9 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
+	if after, ok := args["after"].(string); ok {
+		input.After = after
+	}
 
 	var result *api.ComponentVulnsResult
 	var matchReasons map[string][]string
@@ -640,6 +643,7 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 		"vulnerabilities": formatComponentVulns(result.ComponentVulns, matchReasons, true),
 		"totalCount":      result.TotalCount,
 		"hasMore":         result.HasNextPage,
+		"endCursor":       result.EndCursor,
 	})
 }
 
