@@ -239,23 +239,7 @@ func (s *Server) handleListVersions(ctx context.Context, request mcp.CallToolReq
 
 	versions := make([]map[string]interface{}, len(result.Versions))
 	for i, v := range result.Versions {
-		versionData := map[string]interface{}{
-			"id":          v.ID,
-			"version":     v.Version,
-			"spec":        v.Spec,
-			"specVersion": v.SpecVersion,
-			"format":      v.Format,
-			"lifecycle":   v.Lifecycle,
-			"createdAt":   v.CreatedAt,
-			"updatedAt":   v.UpdatedAt,
-		}
-		if v.Stats != nil {
-			versionData["stats"] = map[string]interface{}{
-				"componentCount": v.Stats.CompCount,
-				"vulnStats":      v.Stats.VulnStats,
-			}
-		}
-		versions[i] = versionData
+		versions[i] = formatVersionSummary(&v)
 	}
 
 	return formatResult(map[string]interface{}{
@@ -299,6 +283,17 @@ func (s *Server) handleGetVersion(ctx context.Context, request mcp.CallToolReque
 			"vulnerabilities":       version.Stats.VulnStats,
 		}
 	}
+	if includeSummary, ok := args["include_component_vuln_summary"].(bool); ok && includeSummary {
+		limit := getIntParam(args, "component_summary_limit", 100)
+		components, err := s.client.ListComponents(ctx, api.ListComponentsInput{
+			VersionID: id,
+			First:     limit,
+		})
+		if err != nil {
+			return newToolResultError(fmt.Sprintf("Failed to list component vulnerability summaries: %v", err)), nil
+		}
+		result["componentVulnerabilitySummary"] = formatComponentVulnerabilitySummaries(components)
+	}
 
 	if version.Environment != nil {
 		result["environment"] = map[string]interface{}{
@@ -309,6 +304,103 @@ func (s *Server) handleGetVersion(ctx context.Context, request mcp.CallToolReque
 	}
 
 	return formatResult(result)
+}
+
+func (s *Server) handleFindVersion(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	versionString, ok := args["version"].(string)
+	if !ok || versionString == "" {
+		return newToolResultError("Missing required parameter: version"), nil
+	}
+
+	searchResult, err := s.client.SearchVersions(ctx, api.VersionSearchInput{
+		Search: versionString,
+		First:  getIntParam(args, "limit", 50),
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to find version: %v", err)), nil
+	}
+
+	productName := strings.TrimSpace(stringParam(args, "product_name"))
+	environmentName := strings.TrimSpace(stringParam(args, "environment_name"))
+	matches := make([]map[string]interface{}, 0, len(searchResult.Versions))
+	for _, version := range searchResult.Versions {
+		if version.Version != versionString {
+			continue
+		}
+		if productName != "" {
+			if version.Environment == nil || version.Environment.Product == nil || !sameName(version.Environment.Product.Name, productName) {
+				continue
+			}
+		}
+		if environmentName != "" {
+			if version.Environment == nil || !sameName(version.Environment.Name, environmentName) {
+				continue
+			}
+		}
+		matches = append(matches, formatVersionSummary(&version))
+	}
+
+	output := map[string]interface{}{
+		"matches":       matches,
+		"matchCount":    len(matches),
+		"searchedCount": len(searchResult.Versions),
+		"totalCount":    searchResult.TotalCount,
+		"hasMore":       searchResult.HasNextPage,
+		"endCursor":     searchResult.EndCursor,
+	}
+	if len(matches) == 1 {
+		output["version"] = matches[0]
+	}
+	return formatResult(output)
+}
+
+func (s *Server) handleExportCycloneDXVex(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	versionID, ok := args["version_id"].(string)
+	if !ok || versionID == "" {
+		return newToolResultError("Missing required parameter: version_id"), nil
+	}
+
+	includeVulns := true
+	specVersion := stringParam(args, "spec_version")
+	if specVersion == "" {
+		specVersion = "1.6"
+	}
+	requireCompleted := []string{"VULN_SCAN"}
+	if require, ok := args["require_vuln_scan_complete"].(bool); ok && !require {
+		requireCompleted = nil
+	}
+
+	download, err := s.client.DownloadSBOM(ctx, api.DownloadSBOMInput{
+		VersionID:        versionID,
+		Spec:             "CycloneDX",
+		SpecVersion:      specVersion,
+		IncludeVulns:     &includeVulns,
+		RequireCompleted: requireCompleted,
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to export CycloneDX VEX: %v", err)), nil
+	}
+
+	includeContent := true
+	if val, ok := args["include_content"].(bool); ok {
+		includeContent = val
+	}
+	output := map[string]interface{}{
+		"ready":            download.Ready,
+		"filename":         download.Filename,
+		"contentType":      download.ContentType,
+		"contentLength":    len(download.Content),
+		"processingStatus": download.ProcessingStatus,
+		"spec":             "CycloneDX",
+		"specVersion":      specVersion,
+		"includeVulns":     true,
+	}
+	if includeContent {
+		output["content"] = download.Content
+	}
+	return formatResult(output)
 }
 
 func (s *Server) handleListDoctorResults(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1831,10 +1923,11 @@ func formatComponentVulns(componentVulns []api.ComponentVuln, matchReasons map[s
 	vulns := make([]map[string]interface{}, len(componentVulns))
 	for i, cv := range componentVulns {
 		vuln := map[string]interface{}{
-			"id":        cv.ID,
-			"versionId": cv.VersionID,
-			"fixedIn":   cv.FixedIn,
-			"updatedAt": cv.UpdatedAt,
+			"id":            cv.ID,
+			"versionId":     cv.VersionID,
+			"fixedIn":       cv.FixedIn,
+			"fixedVersions": cv.FixedVersions,
+			"updatedAt":     cv.UpdatedAt,
 		}
 		if includeDetail {
 			vuln["detail"] = cv.Detail
@@ -2331,6 +2424,10 @@ func sameVexName(left, right string) bool {
 	return normalizeVexName(left) == normalizeVexName(right)
 }
 
+func sameName(left, right string) bool {
+	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right))
+}
+
 func normalizeVexName(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
 	name = strings.ReplaceAll(name, "-", "_")
@@ -2764,6 +2861,69 @@ func formatComponent(component *api.VersionComponent) map[string]interface{} {
 		result["externalUrls"] = externalURLs
 	}
 	return result
+}
+
+func formatVersionSummary(version *api.Version) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":            version.ID,
+		"version":       version.Version,
+		"spec":          version.Spec,
+		"specVersion":   version.SpecVersion,
+		"format":        version.Format,
+		"lifecycle":     version.Lifecycle,
+		"environmentId": version.EnvironmentID,
+		"createdAt":     version.CreatedAt,
+		"updatedAt":     version.UpdatedAt,
+	}
+	if version.Stats != nil {
+		result["stats"] = map[string]interface{}{
+			"componentCount":        version.Stats.CompCount,
+			"componentWithPurl":     version.Stats.CompPurlCount,
+			"componentWithCpe":      version.Stats.CompCpeCount,
+			"componentWithLicense":  version.Stats.CompLicenseCount,
+			"componentWithSupplier": version.Stats.CompSupplierCount,
+			"vulnerabilities":       version.Stats.VulnStats,
+		}
+	}
+	if version.Environment != nil {
+		environment := map[string]interface{}{
+			"id":        version.Environment.ID,
+			"name":      version.Environment.Name,
+			"productId": version.Environment.ProductID,
+		}
+		if version.Environment.Product != nil {
+			environment["product"] = map[string]interface{}{
+				"id":   version.Environment.Product.ID,
+				"name": version.Environment.Product.Name,
+			}
+		}
+		result["environment"] = environment
+	}
+	return result
+}
+
+func formatComponentVulnerabilitySummaries(result *api.ComponentsResult) map[string]interface{} {
+	summaries := make([]map[string]interface{}, 0, len(result.Components))
+	for _, component := range result.Components {
+		if component.VulnSummary == nil {
+			continue
+		}
+		summaries = append(summaries, map[string]interface{}{
+			"componentId":      component.ID,
+			"componentName":    component.Name,
+			"componentVersion": component.Version,
+			"purl":             component.Purl,
+			"totalCount":       component.VulnSummary.TotalCount,
+			"severityCounts":   component.VulnSummary.Stats,
+		})
+	}
+	return map[string]interface{}{
+		"components":   summaries,
+		"totalCount":   result.TotalCount,
+		"hasMore":      result.HasNextPage,
+		"endCursor":    result.EndCursor,
+		"scannedCount": len(result.Components),
+	}
 }
 
 func formatComponentVuln(componentVuln *api.ComponentVuln) map[string]interface{} {

@@ -347,12 +347,16 @@ Product responses include lightweight repository import metadata when available.
 |------|-------------|
 | `list_versions` | List versions in an environment |
 | `get_version` | Get version details with statistics |
+| `find_version` | Find versions by exact version string with optional product/environment disambiguation |
+| `export_cyclonedx_vex` | Export CycloneDX SBOM content with vulnerabilities for VEX workflows |
 | `list_doctor_results` | List SBOM Doctor findings for a version |
 | `compare_versions` | Compare two versions and show drift analysis |
 | `list_components` | List components in a version |
 | `get_component` | Get component details |
 | `update_component` | Update component metadata; requires `confirm=true` |
 | `update_component_supplier` | Update component supplier metadata; requires `confirm=true` |
+
+`get_version` can include a per-component vulnerability summary with `include_component_vuln_summary=true`. `export_cyclonedx_vex` returns `ready`, processing status, filename/content type, content length, and content unless `include_content=false`.
 
 ### Vulnerabilities & VEX
 
@@ -369,6 +373,8 @@ Product responses include lightweight repository import metadata when available.
 `list_vulnerabilities` supports cursor pagination with `limit` and `after`. Responses include `hasMore` and `endCursor`; pass `endCursor` as `after` to fetch the next page.
 
 `list_vulnerabilities` can filter a version by `component_id` or exact component `purl`. `search_vulnerabilities` can filter across the organization by `component_id`, `component_ids`, or exact `purl`, and supports `after`/`endCursor` pagination.
+
+Vulnerability responses include both `fixedIn` and `fixedVersions`; prefer `fixedVersions` when present because it is structured.
 
 ### Supply-Chain Security Incidents
 
