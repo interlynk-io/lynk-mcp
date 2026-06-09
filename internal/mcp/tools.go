@@ -62,6 +62,9 @@ func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolReq
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
+	if after, ok := args["after"].(string); ok {
+		input.After = after
+	}
 
 	result, err := s.client.ListProducts(ctx, input)
 	if err != nil {
@@ -84,6 +87,7 @@ func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolReq
 		"products":   products,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
 	})
 }
 
@@ -606,6 +610,9 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
+	if after, ok := args["after"].(string); ok {
+		input.After = after
+	}
 
 	var result *api.ComponentVulnsResult
 	var matchReasons map[string][]string
@@ -636,6 +643,7 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 		"vulnerabilities": formatComponentVulns(result.ComponentVulns, matchReasons, true),
 		"totalCount":      result.TotalCount,
 		"hasMore":         result.HasNextPage,
+		"endCursor":       result.EndCursor,
 	})
 }
 

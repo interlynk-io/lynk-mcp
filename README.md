@@ -337,6 +337,8 @@ Add to `~/.config/zed/settings.json`:
 | `list_environments` | List environments within a product |
 | `get_environment` | Get details of a specific environment |
 
+`list_products` supports cursor pagination with `limit` and `after`. Responses include `hasMore` and `endCursor`; pass `endCursor` as `after` to fetch the next page.
+
 ### Versions, SBOM Doctor & Components
 
 | Tool | Description |
@@ -360,6 +362,8 @@ Add to `~/.config/zed/settings.json`:
 | `list_vex_justifications` | List VEX justifications with UUIDs for CVE triage |
 | `update_component_vex` | Update VEX data for a component vulnerability; requires `confirm=true` |
 | `search_vulnerabilities` | Search across all products |
+
+`list_vulnerabilities` supports cursor pagination with `limit` and `after`. Responses include `hasMore` and `endCursor`; pass `endCursor` as `after` to fetch the next page.
 
 ### Supply-Chain Security Incidents
 

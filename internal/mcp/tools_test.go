@@ -15,11 +15,143 @@
 package mcp
 
 import (
+	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 
 	"github.com/interlynk-io/lynk-mcp/internal/api"
+	mcpg "github.com/mark3labs/mcp-go/mcp"
 )
+
+type fakeLynkClient struct {
+	lynkClient
+	listProductsInput     api.ListProductsInput
+	listVersionVulnsInput api.ListVersionVulnsInput
+}
+
+func (f *fakeLynkClient) ListProducts(ctx context.Context, input api.ListProductsInput) (*api.ProductsResult, error) {
+	f.listProductsInput = input
+	return &api.ProductsResult{
+		Products: []api.Product{
+			{
+				ID:            "product-1",
+				Name:          "Product 1",
+				Description:   "First product",
+				Enabled:       true,
+				VersionsCount: 7,
+			},
+		},
+		TotalCount:  3,
+		HasNextPage: true,
+		EndCursor:   "cursor-2",
+	}, nil
+}
+
+func (f *fakeLynkClient) ListVersionVulns(ctx context.Context, input api.ListVersionVulnsInput) (*api.ComponentVulnsResult, error) {
+	f.listVersionVulnsInput = input
+	return &api.ComponentVulnsResult{
+		ComponentVulns: []api.ComponentVuln{
+			{
+				ID:        "component-vuln-1",
+				VersionID: input.VersionID,
+				Component: &api.VersionComponent{
+					ID:      "component-1",
+					Name:    "openssl",
+					Version: "3.0.0",
+				},
+				Vuln: &api.Vuln{
+					ID:       "vuln-1",
+					VulnID:   "CVE-2026-0001",
+					Severity: "high",
+				},
+			},
+		},
+		TotalCount:  4,
+		HasNextPage: true,
+		EndCursor:   "vuln-cursor-2",
+	}, nil
+}
+
+func TestHandleListProducts_PassesAfterAndReturnsEndCursor(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleListProducts(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"limit":  2,
+				"after":  "cursor-1",
+				"search": "Product",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListProducts returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListProducts returned tool error: %#v", result.Content)
+	}
+
+	if client.listProductsInput.After != "cursor-1" {
+		t.Fatalf("After = %#v, want cursor-1", client.listProductsInput.After)
+	}
+	if client.listProductsInput.Search != "Product" {
+		t.Fatalf("Search = %#v, want Product", client.listProductsInput.Search)
+	}
+	if client.listProductsInput.First != 2 {
+		t.Fatalf("First = %#v, want 2", client.listProductsInput.First)
+	}
+
+	output := toolResultMap(t, result)
+	if output["endCursor"] != "cursor-2" {
+		t.Fatalf("endCursor = %#v, want cursor-2", output["endCursor"])
+	}
+	if output["hasMore"] != true {
+		t.Fatalf("hasMore = %#v, want true", output["hasMore"])
+	}
+}
+
+func TestHandleListVulnerabilities_PassesAfterAndReturnsEndCursor(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleListVulnerabilities(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"version_id": "version-1",
+				"limit":      2,
+				"after":      "vuln-cursor-1",
+				"severity":   "high",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListVulnerabilities returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListVulnerabilities returned tool error: %#v", result.Content)
+	}
+
+	if client.listVersionVulnsInput.VersionID != "version-1" {
+		t.Fatalf("VersionID = %#v, want version-1", client.listVersionVulnsInput.VersionID)
+	}
+	if client.listVersionVulnsInput.After != "vuln-cursor-1" {
+		t.Fatalf("After = %#v, want vuln-cursor-1", client.listVersionVulnsInput.After)
+	}
+	if client.listVersionVulnsInput.First != 2 {
+		t.Fatalf("First = %#v, want 2", client.listVersionVulnsInput.First)
+	}
+	if !reflect.DeepEqual(client.listVersionVulnsInput.Severity, []string{"high"}) {
+		t.Fatalf("Severity = %#v, want high", client.listVersionVulnsInput.Severity)
+	}
+
+	output := toolResultMap(t, result)
+	if output["endCursor"] != "vuln-cursor-2" {
+		t.Fatalf("endCursor = %#v, want vuln-cursor-2", output["endCursor"])
+	}
+	if output["hasMore"] != true {
+		t.Fatalf("hasMore = %#v, want true", output["hasMore"])
+	}
+}
 
 func TestSameVexName_NormalizesCommonInputForms(t *testing.T) {
 	tests := []struct {
@@ -36,6 +168,22 @@ func TestSameVexName_NormalizesCommonInputForms(t *testing.T) {
 			t.Fatalf("sameVexName(%q, %q) = false, want true", tt.left, tt.right)
 		}
 	}
+}
+
+func toolResultMap(t *testing.T, result *mcpg.CallToolResult) map[string]interface{} {
+	t.Helper()
+	if len(result.Content) != 1 {
+		t.Fatalf("expected one content item, got %d", len(result.Content))
+	}
+	text, ok := result.Content[0].(mcpg.TextContent)
+	if !ok {
+		t.Fatalf("content type = %T, want TextContent", result.Content[0])
+	}
+	var output map[string]interface{}
+	if err := json.Unmarshal([]byte(text.Text), &output); err != nil {
+		t.Fatalf("failed to decode tool result: %v", err)
+	}
+	return output
 }
 
 func TestGetVulnerabilityMetadataFilters_ExceptionalShortcut(t *testing.T) {

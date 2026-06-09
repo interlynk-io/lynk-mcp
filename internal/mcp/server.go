@@ -15,15 +15,58 @@
 package mcp
 
 import (
+	"context"
+
 	"github.com/interlynk-io/lynk-mcp/internal/api"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 )
 
+type lynkClient interface {
+	GetOrganization(ctx context.Context) (*api.Organization, error)
+	ListProducts(ctx context.Context, input api.ListProductsInput) (*api.ProductsResult, error)
+	GetProduct(ctx context.Context, id string) (*api.Product, error)
+	ListVersions(ctx context.Context, input api.ListVersionsInput) (*api.VersionsResult, error)
+	GetVersion(ctx context.Context, id string) (*api.Version, error)
+	ListDoctorResults(ctx context.Context, input api.ListDoctorResultsInput) (*api.DoctorResultsResult, error)
+	CompareVersions(ctx context.Context, sourceVersionID, targetVersionID string) ([]api.VersionDiff, error)
+	ListComponents(ctx context.Context, input api.ListComponentsInput) (*api.ComponentsResult, error)
+	GetComponent(ctx context.Context, id, versionID string) (*api.VersionComponent, error)
+	UpdateComponent(ctx context.Context, input api.UpdateComponentInput) (*api.UpdateComponentResult, error)
+	UpdateComponentSupplier(ctx context.Context, input api.UpdateComponentSupplierInput) (*api.UpdateComponentSupplierResult, error)
+	ListVersionVulns(ctx context.Context, input api.ListVersionVulnsInput) (*api.ComponentVulnsResult, error)
+	GetVuln(ctx context.Context, id, vulnID string) (*api.Vuln, error)
+	GetVexStatuses(ctx context.Context) ([]api.VexStatus, error)
+	GetVexJustifications(ctx context.Context) ([]api.VexJustification, error)
+	UpdateComponentVex(ctx context.Context, input api.UpdateComponentVexInput) (*api.UpdateComponentVexResult, error)
+	ListComponentVulns(ctx context.Context, input api.ListComponentVulnsInput) (*api.ComponentVulnsResult, error)
+	ListSecurityIncidents(ctx context.Context, input api.ListSecurityIncidentsInput) ([]api.SecurityIncident, error)
+	GetSecurityIncident(ctx context.Context, id string) (*api.SecurityIncident, error)
+	CreateSecurityIncident(ctx context.Context, input api.CreateSecurityIncidentInput) (*api.CreateSecurityIncidentResult, error)
+	UpdateSecurityIncident(ctx context.Context, input api.UpdateSecurityIncidentInput) (*api.SecurityIncidentMutationResult, error)
+	GetSecurityIncidentFindings(ctx context.Context, input api.SecurityIncidentFindingsInput) (*api.SecurityIncidentFindingsResult, error)
+	AddSecurityIncidentMarkers(ctx context.Context, incidentID string, markers []api.SecurityIncidentMarkerInput) (*api.AddSecurityIncidentMarkersResult, error)
+	WithdrawSecurityIncidentMarkers(ctx context.Context, incidentID string, markerIDs []string) (*api.SecurityIncidentMarkersResult, error)
+	PublishSecurityIncident(ctx context.Context, id string) (*api.SecurityIncidentMutationResult, error)
+	ResolveSecurityIncident(ctx context.Context, id string) (*api.SecurityIncidentMutationResult, error)
+	ArchiveSecurityIncident(ctx context.Context, id string) (*api.SecurityIncidentMutationResult, error)
+	CreateSecurityIncidentUpdate(ctx context.Context, input api.CreateSecurityIncidentUpdateInput) (*api.CreateSecurityIncidentUpdateResult, error)
+	SuppressSecurityIncidentFinding(ctx context.Context, input api.SuppressSecurityIncidentFindingInput) (*api.SuppressSecurityIncidentFindingResult, error)
+	RerunSecurityIncidentImpactScan(ctx context.Context, id string) (*api.SecurityIncidentMutationResult, error)
+	DryRunSecurityIncidentImpactScan(ctx context.Context, id string) (*api.DryRunSecurityIncidentImpactScanResult, error)
+	GetSecurityIncidentDryRunResult(ctx context.Context, input api.SecurityIncidentDryRunResultInput) (*api.SecurityIncidentDryRunResult, error)
+	ListPolicies(ctx context.Context, input api.ListPoliciesInput) (*api.PoliciesResult, error)
+	GetPolicy(ctx context.Context, id string) (*api.Policy, error)
+	ListPolicyResults(ctx context.Context, input api.ListPolicyResultsInput) (*api.PolicyResultsResult, error)
+	GetTicketingStatus(ctx context.Context, input api.TicketingStatusInput) (*api.TicketingStatus, error)
+	ListLicenses(ctx context.Context, input api.ListLicensesInput) (*api.LicensesResult, error)
+	GetEnvironment(ctx context.Context, id string) (*api.Environment, error)
+}
+
 // Server is the MCP server for Lynk API
 type Server struct {
-	client *api.Client
+	client lynkClient
 	logger *zap.Logger
 	mcp    *server.MCPServer
 }
@@ -67,6 +110,7 @@ func (s *Server) registerTools() {
 		mcp.WithDescription("List all products in the organization"),
 		mcp.WithString("search", mcp.Description("Search term to filter by name")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 20)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page")),
 	), s.handleListProducts)
 
 	s.mcp.AddTool(mcp.NewTool("get_product",
@@ -203,6 +247,7 @@ func (s *Server) registerTools() {
 		mcp.WithBoolean("exceptional", mcp.Description("Shortcut for match_mode=any with cvss_min=9.0, epss_min=0.05, or kev=true")),
 		mcp.WithString("search", mcp.Description("Search term to filter vulnerabilities")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page")),
 	), s.handleListVulnerabilities)
 
 	s.mcp.AddTool(mcp.NewTool("get_vulnerability",
