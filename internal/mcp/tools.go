@@ -62,6 +62,9 @@ func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolReq
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
 	}
+	if after, ok := args["after"].(string); ok {
+		input.After = after
+	}
 
 	result, err := s.client.ListProducts(ctx, input)
 	if err != nil {
@@ -84,6 +87,7 @@ func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolReq
 		"products":   products,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
 	})
 }
 
