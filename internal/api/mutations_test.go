@@ -234,3 +234,68 @@ func TestUpdateComponentVex_MapsInputsAndResults(t *testing.T) {
 		t.Fatalf("unexpected VEX result: %#v", result.ComponentVuln)
 	}
 }
+
+func TestBulkUpdateComponentVex_MapsInputsAndResults(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"componentVexBulkUpdate": {
+					"componentVulns": [
+						{
+							"id": "component-vuln-1",
+							"componentId": "component-1",
+							"vulnId": "vuln-1",
+							"sbomId": "version-1",
+							"fixedIn": "1.2.3",
+							"detail": "detail",
+							"impact": "impact",
+							"actionStmt": "action",
+							"vexStatus": {"id": "status-1", "name": "not_affected"},
+							"vexJustification": {"id": "justification-1", "name": "vulnerable_code_not_present"}
+						}
+					],
+					"errors": ["component-vuln-2 failed"]
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	statusID := "status-1"
+	justificationID := "justification-1"
+	currentVersionID := "version-1"
+	note := ""
+	propagateVex := false
+	resolutionDate := "2026-05-07"
+
+	result, err := client.BulkUpdateComponentVex(context.Background(), BulkUpdateComponentVexInput{
+		ComponentVulnIDs:   []string{"component-vuln-1", "component-vuln-2"},
+		CurrentVersionID:   &currentVersionID,
+		VexStatusID:        &statusID,
+		VexJustificationID: &justificationID,
+		Note:               &note,
+		PropagateVex:       &propagateVex,
+		ResolutionDate:     &resolutionDate,
+	})
+	if err != nil {
+		t.Fatalf("BulkUpdateComponentVex returned error: %v", err)
+	}
+
+	request := gql.requests[0]
+	if got := request["componentVulnIds"].([]string); len(got) != 2 || got[0] != "component-vuln-1" || got[1] != "component-vuln-2" {
+		t.Fatalf("componentVulnIds = %#v, want two requested IDs", request["componentVulnIds"])
+	}
+	if request["currentSbomId"] != "version-1" || request["vexStatusId"] != "status-1" {
+		t.Fatalf("unexpected bulk VEX variables: %#v", request)
+	}
+	if request["note"] != "" || request["propagateVex"] != false {
+		t.Fatalf("destructive bulk VEX values were not preserved: %#v", request)
+	}
+
+	if len(result.ComponentVulns) != 1 || result.ComponentVulns[0].ID != "component-vuln-1" {
+		t.Fatalf("unexpected component vulns: %#v", result.ComponentVulns)
+	}
+	if len(result.Errors) != 1 || result.Errors[0] != "component-vuln-2 failed" {
+		t.Fatalf("Errors = %#v, want partial failure", result.Errors)
+	}
+}

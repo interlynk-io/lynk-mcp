@@ -26,10 +26,11 @@ import (
 
 type fakeLynkClient struct {
 	lynkClient
-	listProductsInput       api.ListProductsInput
-	listVersionVulnsInput   api.ListVersionVulnsInput
-	listComponentVulnsInput api.ListComponentVulnsInput
-	ticketingStatusInput    api.TicketingStatusInput
+	listProductsInput           api.ListProductsInput
+	listVersionVulnsInput       api.ListVersionVulnsInput
+	listComponentVulnsInput     api.ListComponentVulnsInput
+	bulkUpdateComponentVexInput api.BulkUpdateComponentVexInput
+	ticketingStatusInput        api.TicketingStatusInput
 }
 
 func (f *fakeLynkClient) ListProducts(ctx context.Context, input api.ListProductsInput) (*api.ProductsResult, error) {
@@ -207,6 +208,42 @@ func (f *fakeLynkClient) ListComponentVulns(ctx context.Context, input api.ListC
 		TotalCount:  1,
 		HasNextPage: true,
 		EndCursor:   "search-cursor-2",
+	}, nil
+}
+
+func (f *fakeLynkClient) GetVexStatuses(ctx context.Context) ([]api.VexStatus, error) {
+	return []api.VexStatus{
+		{ID: "status-1", Name: "not_affected"},
+	}, nil
+}
+
+func (f *fakeLynkClient) GetVexJustifications(ctx context.Context) ([]api.VexJustification, error) {
+	return []api.VexJustification{
+		{ID: "justification-1", Name: "vulnerable_code_not_present"},
+	}, nil
+}
+
+func (f *fakeLynkClient) BulkUpdateComponentVex(ctx context.Context, input api.BulkUpdateComponentVexInput) (*api.BulkUpdateComponentVexResult, error) {
+	f.bulkUpdateComponentVexInput = input
+	return &api.BulkUpdateComponentVexResult{
+		ComponentVulns: []api.ComponentVuln{
+			{
+				ID:          "component-vuln-1",
+				ComponentID: "component-1",
+				VulnID:      "vuln-1",
+				VersionID:   "version-1",
+				FixedIn:     "1.2.3",
+				VexStatus: &api.VexStatus{
+					ID:   "status-1",
+					Name: "not_affected",
+				},
+				VexJustification: &api.VexJustification{
+					ID:   "justification-1",
+					Name: "vulnerable_code_not_present",
+				},
+			},
+		},
+		Errors: []string{"component-vuln-2 failed"},
 	}, nil
 }
 
@@ -450,6 +487,97 @@ func TestHandleSearchVulnerabilities_RejectsEmptyPurl(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatal("expected empty purl to return a tool error")
+	}
+}
+
+func TestHandleBulkUpdateComponentVex_RequiresConfirm(t *testing.T) {
+	server := &Server{client: &fakeLynkClient{}}
+	result, err := server.handleBulkUpdateComponentVex(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"component_vuln_ids": []interface{}{"component-vuln-1"},
+				"vex_status_id":      "status-1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleBulkUpdateComponentVex returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected missing confirm to return a tool error")
+	}
+}
+
+func TestHandleBulkUpdateComponentVex_RejectsEmptyIDs(t *testing.T) {
+	server := &Server{client: &fakeLynkClient{}}
+	result, err := server.handleBulkUpdateComponentVex(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"confirm":            true,
+				"component_vuln_ids": []interface{}{" "},
+				"vex_status_id":      "status-1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleBulkUpdateComponentVex returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected empty component_vuln_ids to return a tool error")
+	}
+}
+
+func TestHandleBulkUpdateComponentVex_ResolvesNamesAndReturnsPartialFailures(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleBulkUpdateComponentVex(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"confirm":            true,
+				"component_vuln_ids": []interface{}{"component-vuln-1", "component-vuln-2"},
+				"current_version_id": "version-1",
+				"vex_status":         "not affected",
+				"vex_justification":  "vulnerable code not present",
+				"fixed_in":           "1.2.3",
+				"propagate_vex":      false,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleBulkUpdateComponentVex returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleBulkUpdateComponentVex returned tool error: %#v", result.Content)
+	}
+
+	input := client.bulkUpdateComponentVexInput
+	if !reflect.DeepEqual(input.ComponentVulnIDs, []string{"component-vuln-1", "component-vuln-2"}) {
+		t.Fatalf("ComponentVulnIDs = %#v, want requested IDs", input.ComponentVulnIDs)
+	}
+	if input.CurrentVersionID == nil || *input.CurrentVersionID != "version-1" {
+		t.Fatalf("CurrentVersionID = %#v, want version-1", input.CurrentVersionID)
+	}
+	if input.VexStatusID == nil || *input.VexStatusID != "status-1" {
+		t.Fatalf("VexStatusID = %#v, want status-1", input.VexStatusID)
+	}
+	if input.VexJustificationID == nil || *input.VexJustificationID != "justification-1" {
+		t.Fatalf("VexJustificationID = %#v, want justification-1", input.VexJustificationID)
+	}
+	if input.PropagateVex == nil || *input.PropagateVex {
+		t.Fatalf("PropagateVex = %#v, want false", input.PropagateVex)
+	}
+
+	output := toolResultMap(t, result)
+	if output["requestedCount"] != float64(2) || output["updatedCount"] != float64(1) || output["failedCount"] != float64(1) {
+		t.Fatalf("unexpected counts: %#v", output)
+	}
+	updated := output["updated"].([]interface{})
+	if len(updated) != 1 || updated[0].(map[string]interface{})["id"] != "component-vuln-1" {
+		t.Fatalf("unexpected updated entries: %#v", updated)
+	}
+	failed := output["failed"].([]interface{})
+	if len(failed) != 1 || failed[0].(map[string]interface{})["componentVulnId"] != "component-vuln-2" {
+		t.Fatalf("unexpected failed entries: %#v", failed)
 	}
 }
 

@@ -363,6 +363,7 @@ Product responses include lightweight repository import metadata when available.
 | `list_vex_statuses` | List VEX statuses with UUIDs for CVE triage |
 | `list_vex_justifications` | List VEX justifications with UUIDs for CVE triage |
 | `update_component_vex` | Update VEX data for a component vulnerability; requires `confirm=true` |
+| `bulk_update_component_vex` | Update VEX data for multiple component vulnerabilities with one shared payload; requires `confirm=true` |
 | `search_vulnerabilities` | Search across all products |
 
 `list_vulnerabilities` supports cursor pagination with `limit` and `after`. Responses include `hasMore` and `endCursor`; pass `endCursor` as `after` to fetch the next page.

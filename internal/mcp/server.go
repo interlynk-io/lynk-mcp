@@ -40,6 +40,7 @@ type lynkClient interface {
 	GetVexStatuses(ctx context.Context) ([]api.VexStatus, error)
 	GetVexJustifications(ctx context.Context) ([]api.VexJustification, error)
 	UpdateComponentVex(ctx context.Context, input api.UpdateComponentVexInput) (*api.UpdateComponentVexResult, error)
+	BulkUpdateComponentVex(ctx context.Context, input api.BulkUpdateComponentVexInput) (*api.BulkUpdateComponentVexResult, error)
 	ListComponentVulns(ctx context.Context, input api.ListComponentVulnsInput) (*api.ComponentVulnsResult, error)
 	ListSecurityIncidents(ctx context.Context, input api.ListSecurityIncidentsInput) ([]api.SecurityIncident, error)
 	GetSecurityIncident(ctx context.Context, id string) (*api.SecurityIncident, error)
@@ -292,6 +293,34 @@ func (s *Server) registerTools() {
 			},
 		})),
 	), s.handleUpdateComponentVex)
+
+	s.mcp.AddTool(mcp.NewTool("bulk_update_component_vex",
+		mcp.WithDescription("Destructively update VEX data for multiple component vulnerabilities with one shared update payload. Requires confirm=true. Status and justification may be supplied by UUID or by name."),
+		mcp.WithArray("component_vuln_ids", mcp.Required(), mcp.Description("Component vulnerability UUIDs to update"), mcp.WithStringItems()),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to perform this destructive update")),
+		mcp.WithString("current_version_id", mcp.Description("Optional current version/SBOM context UUID")),
+		mcp.WithString("vex_status_id", mcp.Description("VEX status UUID")),
+		mcp.WithString("vex_status", mcp.Description("VEX status name (e.g., affected, not_affected, fixed); resolved to UUID automatically")),
+		mcp.WithString("vex_justification_id", mcp.Description("VEX justification UUID")),
+		mcp.WithString("vex_justification", mcp.Description("VEX justification name (e.g., vulnerable_code_not_present); resolved to UUID automatically")),
+		mcp.WithString("cdx_response_id", mcp.Description("CycloneDX response UUID")),
+		mcp.WithString("note", mcp.Description("VEX note")),
+		mcp.WithString("impact", mcp.Description("Impact statement")),
+		mcp.WithString("detail", mcp.Description("Detail statement")),
+		mcp.WithString("action", mcp.Description("Action statement")),
+		mcp.WithString("fixed_in", mcp.Description("Fixed-in value")),
+		mcp.WithBoolean("propagate_vex", mcp.Description("Propagate VEX to upstream")),
+		mcp.WithString("resolution_date", mcp.Description("Resolution date in YYYY-MM-DD format")),
+		mcp.WithArray("component_vuln_custom_field_attributes", mcp.Description("Custom field attribute objects"), mcp.Items(map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"id":                                   map[string]interface{}{"type": "string"},
+				"componentVulnCustomFieldDefinitionId": map[string]interface{}{"type": "string"},
+				"value":                                map[string]interface{}{"type": "string"},
+				"_destroy":                             map[string]interface{}{"type": "boolean"},
+			},
+		})),
+	), s.handleBulkUpdateComponentVex)
 
 	s.mcp.AddTool(mcp.NewTool("search_vulnerabilities",
 		mcp.WithDescription("Search vulnerabilities across all products"),
