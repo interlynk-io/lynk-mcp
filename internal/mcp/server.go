@@ -236,6 +236,8 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(mcp.NewTool("list_vulnerabilities",
 		mcp.WithDescription("List vulnerabilities in a version with optional filters"),
 		mcp.WithString("version_id", mcp.Required(), mcp.Description("The UUID of the version")),
+		mcp.WithString("component_id", mcp.Description("Filter to a single component UUID")),
+		mcp.WithString("purl", mcp.Description("Exact component package URL to filter by")),
 		mcp.WithString("severity", mcp.Description("Filter by severity (critical, high, medium, low)")),
 		mcp.WithString("vex_status", mcp.Description("Filter by VEX status (e.g., affected, not_affected, fixed)")),
 		mcp.WithBoolean("kev", mcp.Description("Filter to only KEV (Known Exploited Vulnerabilities)")),
@@ -294,6 +296,9 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(mcp.NewTool("search_vulnerabilities",
 		mcp.WithDescription("Search vulnerabilities across all products"),
 		mcp.WithString("search", mcp.Description("Search term (CVE ID, component name, etc.)")),
+		mcp.WithString("component_id", mcp.Description("Filter to a single component UUID")),
+		mcp.WithArray("component_ids", mcp.Description("Filter to one or more component UUIDs"), mcp.WithStringItems()),
+		mcp.WithString("purl", mcp.Description("Exact component package URL to filter by")),
 		mcp.WithString("product_id", mcp.Description("Filter by product/repository UUID")),
 		mcp.WithString("environment_id", mcp.Description("Filter by environment/project UUID")),
 		mcp.WithString("severity", mcp.Description("Filter by severity")),
@@ -305,6 +310,7 @@ func (s *Server) registerTools() {
 		mcp.WithString("match_mode", mcp.Description("How to combine filters: all (default) or any")),
 		mcp.WithBoolean("exceptional", mcp.Description("Shortcut for match_mode=any with cvss_min=9.0, epss_min=0.05, or kev=true")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page")),
 	), s.handleSearchVulnerabilities)
 
 	// Security incident tools

@@ -476,6 +476,7 @@ const (
 							name
 							version
 							purl
+							sbomId
 						}
 						vuln {
 							id
@@ -562,8 +563,8 @@ const (
 
 	// ComponentVulnsQuery fetches component vulnerabilities with filters
 	ComponentVulnsQuery = `
-		query GetComponentVulns($first: Int, $after: String, $severity: [String!], $status: [String!], $kev: Boolean, $epss: RangeInput, $search: String, $projectIds: [Uuid!], $projectGroupIds: [Uuid!]) {
-			componentVulns(first: $first, after: $after, severity: $severity, status: $status, kev: $kev, epss: $epss, search: $search, projectIds: $projectIds, projectGroupIds: $projectGroupIds) {
+		query GetComponentVulns($first: Int, $after: String, $severity: [String!], $status: [String!], $kev: Boolean, $epss: RangeInput, $search: String, $componentIds: [Uuid!], $projectIds: [Uuid!], $projectGroupIds: [Uuid!]) {
+			componentVulns(first: $first, after: $after, severity: $severity, status: $status, kev: $kev, epss: $epss, search: $search, componentIds: $componentIds, projectIds: $projectIds, projectGroupIds: $projectGroupIds) {
 				nodes {
 					id
 					componentId

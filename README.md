@@ -367,6 +367,8 @@ Product responses include lightweight repository import metadata when available.
 
 `list_vulnerabilities` supports cursor pagination with `limit` and `after`. Responses include `hasMore` and `endCursor`; pass `endCursor` as `after` to fetch the next page.
 
+`list_vulnerabilities` can filter a version by `component_id` or exact component `purl`. `search_vulnerabilities` can filter across the organization by `component_id`, `component_ids`, or exact `purl`, and supports `after`/`endCursor` pagination.
+
 ### Supply-Chain Security Incidents
 
 | Tool | Description |

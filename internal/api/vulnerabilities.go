@@ -89,15 +89,17 @@ type ComponentVulnsResult struct {
 
 // ListVersionVulnsInput contains parameters for listing version vulnerabilities
 type ListVersionVulnsInput struct {
-	VersionID string
-	First     int
-	After     string
-	Severity  []string
-	Status    []string
-	Kev       *bool
-	EpssMin   *float64
-	EpssMax   *float64
-	Search    string
+	VersionID    string
+	First        int
+	After        string
+	Severity     []string
+	Status       []string
+	Kev          *bool
+	EpssMin      *float64
+	EpssMax      *float64
+	Search       string
+	ComponentIDs []string
+	Purl         string
 }
 
 // ListVersionVulns fetches vulnerabilities for a version
@@ -147,6 +149,7 @@ func (c *Client) ListVersionVulns(ctx context.Context, input ListVersionVulnsInp
 						Name    string `json:"name"`
 						Version string `json:"version"`
 						Purl    string `json:"purl"`
+						SbomID  string `json:"sbomId"`
 					} `json:"component"`
 					Vuln *struct {
 						ID             string               `json:"id"`
@@ -205,10 +208,11 @@ func (c *Client) ListVersionVulns(ctx context.Context, input ListVersionVulnsInp
 		}
 		if n.Component != nil {
 			cv.Component = &VersionComponent{
-				ID:      n.Component.ID,
-				Name:    n.Component.Name,
-				Version: n.Component.Version,
-				Purl:    n.Component.Purl,
+				ID:        n.Component.ID,
+				Name:      n.Component.Name,
+				Version:   n.Component.Version,
+				Purl:      n.Component.Purl,
+				VersionID: n.Component.SbomID,
 			}
 		}
 		if n.Vuln != nil {
@@ -386,6 +390,8 @@ type ListComponentVulnsInput struct {
 	EpssMin        *float64
 	EpssMax        *float64
 	Search         string
+	ComponentIDs   []string
+	Purl           string
 	EnvironmentIDs []string
 	ProductIDs     []string
 }
@@ -413,6 +419,9 @@ func (c *Client) ListComponentVulns(ctx context.Context, input ListComponentVuln
 	addEpssRangeVar(vars, input.EpssMin, input.EpssMax)
 	if input.Search != "" {
 		vars["search"] = input.Search
+	}
+	if len(input.ComponentIDs) > 0 {
+		vars["componentIds"] = input.ComponentIDs
 	}
 	if len(input.EnvironmentIDs) > 0 {
 		vars["projectIds"] = input.EnvironmentIDs

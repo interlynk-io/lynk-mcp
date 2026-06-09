@@ -26,9 +26,10 @@ import (
 
 type fakeLynkClient struct {
 	lynkClient
-	listProductsInput     api.ListProductsInput
-	listVersionVulnsInput api.ListVersionVulnsInput
-	ticketingStatusInput  api.TicketingStatusInput
+	listProductsInput       api.ListProductsInput
+	listVersionVulnsInput   api.ListVersionVulnsInput
+	listComponentVulnsInput api.ListComponentVulnsInput
+	ticketingStatusInput    api.TicketingStatusInput
 }
 
 func (f *fakeLynkClient) ListProducts(ctx context.Context, input api.ListProductsInput) (*api.ProductsResult, error) {
@@ -126,17 +127,37 @@ func (f *fakeLynkClient) ListVersionVulns(ctx context.Context, input api.ListVer
 	return &api.ComponentVulnsResult{
 		ComponentVulns: []api.ComponentVuln{
 			{
-				ID:        "component-vuln-1",
-				VersionID: input.VersionID,
+				ID:          "component-vuln-1",
+				ComponentID: "component-1",
+				VersionID:   input.VersionID,
 				Component: &api.VersionComponent{
-					ID:      "component-1",
-					Name:    "openssl",
-					Version: "3.0.0",
+					ID:        "component-1",
+					Name:      "openssl",
+					Version:   "3.0.0",
+					Purl:      "pkg:generic/openssl@3.0.0",
+					VersionID: input.VersionID,
 				},
 				Vuln: &api.Vuln{
 					ID:       "vuln-1",
 					VulnID:   "CVE-2026-0001",
 					Severity: "high",
+				},
+			},
+			{
+				ID:          "component-vuln-2",
+				ComponentID: "component-2",
+				VersionID:   input.VersionID,
+				Component: &api.VersionComponent{
+					ID:        "component-2",
+					Name:      "zlib",
+					Version:   "1.2.13",
+					Purl:      "pkg:generic/zlib@1.2.13",
+					VersionID: input.VersionID,
+				},
+				Vuln: &api.Vuln{
+					ID:       "vuln-2",
+					VulnID:   "CVE-2026-0002",
+					Severity: "medium",
 				},
 			},
 		},
@@ -158,6 +179,34 @@ func (f *fakeLynkClient) GetTicketingStatus(ctx context.Context, input api.Ticke
 		TicketsScannedCount: 500,
 		TicketsHasNextPage:  true,
 		TicketsEndCursor:    "tickets-cursor-2",
+	}, nil
+}
+
+func (f *fakeLynkClient) ListComponentVulns(ctx context.Context, input api.ListComponentVulnsInput) (*api.ComponentVulnsResult, error) {
+	f.listComponentVulnsInput = input
+	return &api.ComponentVulnsResult{
+		ComponentVulns: []api.ComponentVuln{
+			{
+				ID:          "component-vuln-1",
+				ComponentID: "component-1",
+				VersionID:   "version-1",
+				Component: &api.VersionComponent{
+					ID:        "component-1",
+					Name:      "openssl",
+					Version:   "3.0.0",
+					Purl:      "pkg:generic/openssl@3.0.0",
+					VersionID: "version-1",
+				},
+				Vuln: &api.Vuln{
+					ID:       "vuln-1",
+					VulnID:   "CVE-2026-0001",
+					Severity: "high",
+				},
+			},
+		},
+		TotalCount:  1,
+		HasNextPage: true,
+		EndCursor:   "search-cursor-2",
 	}, nil
 }
 
@@ -293,6 +342,114 @@ func TestHandleListVulnerabilities_PassesAfterAndReturnsEndCursor(t *testing.T) 
 	}
 	if output["hasMore"] != true {
 		t.Fatalf("hasMore = %#v, want true", output["hasMore"])
+	}
+}
+
+func TestHandleListVulnerabilities_FiltersByComponentIDAndPurl(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleListVulnerabilities(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"version_id":   "version-1",
+				"component_id": "component-1",
+				"purl":         "pkg:generic/openssl@3.0.0",
+				"limit":        10,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListVulnerabilities returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListVulnerabilities returned tool error: %#v", result.Content)
+	}
+	if !reflect.DeepEqual(client.listVersionVulnsInput.ComponentIDs, []string{"component-1"}) {
+		t.Fatalf("ComponentIDs = %#v, want component-1", client.listVersionVulnsInput.ComponentIDs)
+	}
+	if client.listVersionVulnsInput.Purl != "pkg:generic/openssl@3.0.0" {
+		t.Fatalf("Purl = %#v, want openssl purl", client.listVersionVulnsInput.Purl)
+	}
+
+	output := toolResultMap(t, result)
+	vulns := output["vulnerabilities"].([]interface{})
+	if len(vulns) != 1 {
+		t.Fatalf("len(vulnerabilities) = %d, want 1", len(vulns))
+	}
+	component := vulns[0].(map[string]interface{})["component"].(map[string]interface{})
+	if component["id"] != "component-1" || component["purl"] != "pkg:generic/openssl@3.0.0" {
+		t.Fatalf("unexpected component output: %#v", component)
+	}
+	if component["sbomId"] != "version-1" || component["versionId"] != "version-1" {
+		t.Fatalf("missing stable version identifiers: %#v", component)
+	}
+}
+
+func TestHandleListVulnerabilities_RejectsEmptyPurl(t *testing.T) {
+	server := &Server{client: &fakeLynkClient{}}
+	result, err := server.handleListVulnerabilities(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"version_id": "version-1",
+				"purl":       "",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListVulnerabilities returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected empty purl to return a tool error")
+	}
+}
+
+func TestHandleSearchVulnerabilities_FiltersComponentIDsAndPaginates(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleSearchVulnerabilities(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"component_ids": []interface{}{"component-1", "component-2"},
+				"component_id":  "component-3",
+				"after":         "search-cursor-1",
+				"limit":         25,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleSearchVulnerabilities returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleSearchVulnerabilities returned tool error: %#v", result.Content)
+	}
+	wantComponentIDs := []string{"component-1", "component-2", "component-3"}
+	if !reflect.DeepEqual(client.listComponentVulnsInput.ComponentIDs, wantComponentIDs) {
+		t.Fatalf("ComponentIDs = %#v, want %#v", client.listComponentVulnsInput.ComponentIDs, wantComponentIDs)
+	}
+	if client.listComponentVulnsInput.After != "search-cursor-1" || client.listComponentVulnsInput.First != 25 {
+		t.Fatalf("unexpected pagination input: %#v", client.listComponentVulnsInput)
+	}
+
+	output := toolResultMap(t, result)
+	if output["endCursor"] != "search-cursor-2" || output["hasMore"] != true {
+		t.Fatalf("unexpected pagination output: %#v", output)
+	}
+}
+
+func TestHandleSearchVulnerabilities_RejectsEmptyPurl(t *testing.T) {
+	server := &Server{client: &fakeLynkClient{}}
+	result, err := server.handleSearchVulnerabilities(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"purl": "",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleSearchVulnerabilities returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected empty purl to return a tool error")
 	}
 }
 

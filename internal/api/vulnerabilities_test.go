@@ -16,6 +16,7 @@ package api
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -119,6 +120,46 @@ func TestListVersionVulns_AcceptsNestedVulnTimestampsWithoutTimezone(t *testing.
 	wantPublished := time.Date(2025, 6, 30, 21, 15, 30, 257000000, time.UTC)
 	if !result.ComponentVulns[0].Vuln.PublishedAt.Equal(wantPublished) {
 		t.Fatalf("PublishedAt = %s, want %s", result.ComponentVulns[0].Vuln.PublishedAt, wantPublished)
+	}
+}
+
+func TestListComponentVulns_PassesComponentIDs(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"componentVulns": {
+					"nodes": [],
+					"totalCount": 0,
+					"pageInfo": {
+						"hasNextPage": false,
+						"endCursor": ""
+					}
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	_, err := client.ListComponentVulns(context.Background(), ListComponentVulnsInput{
+		ComponentIDs: []string{"component-1", "component-2"},
+		After:        "cursor-1",
+		First:        25,
+	})
+	if err != nil {
+		t.Fatalf("ListComponentVulns returned error: %v", err)
+	}
+
+	request := gql.requests[0]
+	if request["after"] != "cursor-1" || request["first"] != 25 {
+		t.Fatalf("unexpected pagination variables: %#v", request)
+	}
+	got, ok := request["componentIds"].([]string)
+	if !ok {
+		t.Fatalf("componentIds = %T %#v, want []string", request["componentIds"], request["componentIds"])
+	}
+	want := []string{"component-1", "component-2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("componentIds = %#v, want %#v", got, want)
 	}
 }
 
