@@ -620,6 +620,15 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 		VersionID: versionID,
 		First:     getIntParam(args, "limit", 50),
 	}
+	if componentID, ok := args["component_id"].(string); ok && componentID != "" {
+		input.ComponentIDs = []string{componentID}
+	}
+	if purl, ok := args["purl"].(string); ok {
+		if purl == "" {
+			return newToolResultError("purl must not be empty"), nil
+		}
+		input.Purl = purl
+	}
 	if severity, ok := args["severity"].(string); ok && severity != "" {
 		input.Severity = []string{severity}
 	}
@@ -652,10 +661,14 @@ func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.Call
 		if err == nil {
 			matchReasons = matchReasonsForComponentVulns(result.ComponentVulns, filters)
 			result.ComponentVulns = filterComponentVulnsByClientThresholds(result.ComponentVulns, filters)
+			result.ComponentVulns = filterComponentVulnsByComponentIdentity(result.ComponentVulns, input.ComponentIDs, input.Purl)
 			if filters.HasClientSideThresholds() {
 				result.TotalCount = len(result.ComponentVulns)
 				result.ComponentVulns = limitComponentVulns(result.ComponentVulns, input.First)
 				result.HasNextPage = result.HasNextPage || result.TotalCount > len(result.ComponentVulns)
+			}
+			if len(input.ComponentIDs) > 0 || input.Purl != "" {
+				result.TotalCount = len(result.ComponentVulns)
 			}
 		}
 	}
@@ -819,8 +832,21 @@ func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.Ca
 	input := api.ListComponentVulnsInput{
 		First: getIntParam(args, "limit", 50),
 	}
+	if after, ok := args["after"].(string); ok {
+		input.After = after
+	}
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
+	}
+	input.ComponentIDs = getStringSliceParam(args, "component_ids")
+	if componentID, ok := args["component_id"].(string); ok && componentID != "" {
+		input.ComponentIDs = append(input.ComponentIDs, componentID)
+	}
+	if purl, ok := args["purl"].(string); ok {
+		if purl == "" {
+			return newToolResultError("purl must not be empty"), nil
+		}
+		input.Purl = purl
 	}
 	if severity, ok := args["severity"].(string); ok && severity != "" {
 		input.Severity = []string{severity}
@@ -851,10 +877,14 @@ func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.Ca
 		if err == nil {
 			matchReasons = matchReasonsForComponentVulns(result.ComponentVulns, filters)
 			result.ComponentVulns = filterComponentVulnsByClientThresholds(result.ComponentVulns, filters)
+			result.ComponentVulns = filterComponentVulnsByComponentIdentity(result.ComponentVulns, nil, input.Purl)
 			if filters.HasClientSideThresholds() {
 				result.TotalCount = len(result.ComponentVulns)
 				result.ComponentVulns = limitComponentVulns(result.ComponentVulns, input.First)
 				result.HasNextPage = result.HasNextPage || result.TotalCount > len(result.ComponentVulns)
+			}
+			if input.Purl != "" {
+				result.TotalCount = len(result.ComponentVulns)
 			}
 		}
 	}
@@ -866,6 +896,7 @@ func (s *Server) handleSearchVulnerabilities(ctx context.Context, request mcp.Ca
 		"vulnerabilities": formatComponentVulns(result.ComponentVulns, matchReasons, false),
 		"totalCount":      result.TotalCount,
 		"hasMore":         result.HasNextPage,
+		"endCursor":       result.EndCursor,
 	})
 }
 
@@ -1561,11 +1592,12 @@ func (s *Server) listVersionVulnsAny(ctx context.Context, input api.ListVersionV
 		hasMore = hasMore || result.HasNextPage
 	}
 
-	vulns := componentVulnMapValues(merged, input.First)
+	filtered := filterComponentVulnsByComponentIdentity(componentVulnMapValues(merged, 0), input.ComponentIDs, input.Purl)
+	vulns := limitComponentVulns(filtered, input.First)
 	return &api.ComponentVulnsResult{
 		ComponentVulns: vulns,
-		TotalCount:     len(merged),
-		HasNextPage:    hasMore || len(merged) > len(vulns),
+		TotalCount:     len(filtered),
+		HasNextPage:    hasMore || len(filtered) > len(vulns),
 	}, reasons, nil
 }
 
@@ -1615,11 +1647,12 @@ func (s *Server) listComponentVulnsAny(ctx context.Context, input api.ListCompon
 		hasMore = hasMore || result.HasNextPage
 	}
 
-	vulns := componentVulnMapValues(merged, input.First)
+	filtered := filterComponentVulnsByComponentIdentity(componentVulnMapValues(merged, 0), nil, input.Purl)
+	vulns := limitComponentVulns(filtered, input.First)
 	return &api.ComponentVulnsResult{
 		ComponentVulns: vulns,
-		TotalCount:     len(merged),
-		HasNextPage:    hasMore || len(merged) > len(vulns),
+		TotalCount:     len(filtered),
+		HasNextPage:    hasMore || len(filtered) > len(vulns),
 	}, reasons, nil
 }
 
@@ -1634,7 +1667,7 @@ func mergeComponentVulns(merged map[string]api.ComponentVuln, reasons map[string
 
 func componentVulnMapValues(merged map[string]api.ComponentVuln, limit int) []api.ComponentVuln {
 	if limit <= 0 {
-		limit = 50
+		limit = len(merged)
 	}
 	vulns := make([]api.ComponentVuln, 0, minInt(len(merged), limit))
 	for _, vuln := range merged {
@@ -1666,6 +1699,32 @@ func vulnerabilityAnyQueryLimit(limit int) int {
 func filterComponentVulnsByClientThresholds(vulns []api.ComponentVuln, filters vulnerabilityMetadataFilters) []api.ComponentVuln {
 	vulns = filterComponentVulnsByCvss(vulns, filters)
 	return vulns
+}
+
+func filterComponentVulnsByComponentIdentity(vulns []api.ComponentVuln, componentIDs []string, purl string) []api.ComponentVuln {
+	if len(componentIDs) == 0 && purl == "" {
+		return vulns
+	}
+	componentIDSet := make(map[string]bool, len(componentIDs))
+	for _, id := range componentIDs {
+		if id != "" {
+			componentIDSet[id] = true
+		}
+	}
+
+	filtered := make([]api.ComponentVuln, 0, len(vulns))
+	for _, vuln := range vulns {
+		if len(componentIDSet) > 0 && !componentIDSet[vuln.ComponentID] {
+			continue
+		}
+		if purl != "" {
+			if vuln.Component == nil || vuln.Component.Purl != purl {
+				continue
+			}
+		}
+		filtered = append(filtered, vuln)
+	}
+	return filtered
 }
 
 func filterComponentVulnsByCvss(vulns []api.ComponentVuln, filters vulnerabilityMetadataFilters) []api.ComponentVuln {
@@ -1733,12 +1792,17 @@ func formatComponentVulns(componentVulns []api.ComponentVuln, matchReasons map[s
 			vuln["matchReasons"] = reasons
 		}
 		if cv.Component != nil {
-			vuln["component"] = map[string]interface{}{
+			component := map[string]interface{}{
 				"id":      cv.Component.ID,
 				"name":    cv.Component.Name,
 				"version": cv.Component.Version,
 				"purl":    cv.Component.Purl,
 			}
+			if cv.Component.VersionID != "" {
+				component["sbomId"] = cv.Component.VersionID
+				component["versionId"] = cv.Component.VersionID
+			}
+			vuln["component"] = component
 		}
 		if cv.Vuln != nil {
 			vulnData := map[string]interface{}{

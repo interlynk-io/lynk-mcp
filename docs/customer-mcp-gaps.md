@@ -240,20 +240,25 @@ Expected impact: customers can inspect repo import status and JIRA defaults with
 ### Phase 4: Component-scoped vulnerability triage
 
 - [x] Check `lynk-api` schema for existing component filters on `sbom.vulns` or `componentVulns`.
-- [ ] Add MCP support for API-supported component ID filtering, likely via `componentVulns(componentIds: ...)` or a version-scoped API addition.
+- [x] Add MCP support for API-supported component ID filtering, likely via `componentVulns(componentIds: ...)` or a version-scoped API addition.
 - [ ] Add API support for purl filtering if exact purl filtering is required server-side.
-- [ ] Treat purl filtering carefully:
+- [x] Treat purl filtering carefully:
   - Prefer exact purl match.
   - Define behavior for empty purl.
   - Decide whether purl is scoped by version ID, org, or component ID.
-- [ ] Return stable component identifiers in the vulnerability response:
+- [x] Return stable component identifiers in the vulnerability response:
   - `component.id`
   - `component.name`
   - `component.version`
   - `component.purl`
   - `component.bomRef` if available
   - `component.sbomId` or `versionId`
-- [ ] Add tests for component ID, purl, empty purl, and pagination combined with component filters.
+- [x] Add tests for component ID, purl, empty purl, and pagination combined with component filters.
+
+Notes:
+- `componentVulns(componentIds: ...)` is used for org-wide `search_vulnerabilities`; version-scoped `list_vulnerabilities` filters component IDs within `sbom.vulns` results.
+- Exact `purl` filtering is implemented in MCP response handling. Server-side purl filtering remains open until the API exposes it.
+- `component.bomRef` was not added because it is not exposed by the current API schema; responses include component id, name, version, purl, and `sbomId`/`versionId` where available.
 
 Expected impact: customers can enumerate all findings for a component and perform class disposition with auditability.
 
