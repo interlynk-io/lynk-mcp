@@ -75,13 +75,13 @@ func (ft FlexibleTime) MarshalJSON() ([]byte, error) {
 
 // Organization represents a Lynk organization
 type Organization struct {
-	ID        string             `json:"id"`
-	Name      string             `json:"name"`
-	Email     string             `json:"email,omitempty"`
-	URL       string             `json:"url,omitempty"`
-	Status    string             `json:"status"`
-	Tier      string             `json:"tier"`
-	UpdatedAt time.Time          `json:"updatedAt"`
+	ID        string                  `json:"id"`
+	Name      string                  `json:"name"`
+	Email     string                  `json:"email,omitempty"`
+	URL       string                  `json:"url,omitempty"`
+	Status    string                  `json:"status"`
+	Tier      string                  `json:"tier"`
+	UpdatedAt time.Time               `json:"updatedAt"`
 	Metrics   *OrganizationLiveMetric `json:"metrics,omitempty"`
 }
 
@@ -97,14 +97,14 @@ type OrganizationLiveMetric struct {
 
 // ProjectGroup represents a product/project group
 type ProjectGroup struct {
-	ID             string     `json:"id"`
-	Name           string     `json:"name"`
-	Description    string     `json:"description,omitempty"`
-	Enabled        bool       `json:"enabled"`
-	OrganizationID string     `json:"organizationId"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
-	SbomsCount     int        `json:"sbomsCount,omitempty"`
-	Projects       []Project  `json:"projects,omitempty"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description,omitempty"`
+	Enabled        bool      `json:"enabled"`
+	OrganizationID string    `json:"organizationId"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+	SbomsCount     int       `json:"sbomsCount,omitempty"`
+	Projects       []Project `json:"projects,omitempty"`
 }
 
 // ProjectGroupConnection represents a paginated list of project groups
@@ -116,13 +116,13 @@ type ProjectGroupConnection struct {
 
 // Project represents a stream/project within a project group
 type Project struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Description    string   `json:"description,omitempty"`
-	Enabled        bool     `json:"enabled"`
-	ProjectGroupID string   `json:"projectGroupId,omitempty"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description,omitempty"`
+	Enabled        bool      `json:"enabled"`
+	ProjectGroupID string    `json:"projectGroupId,omitempty"`
 	UpdatedAt      time.Time `json:"updatedAt"`
-	SbomsCount     int      `json:"sbomsCount,omitempty"`
+	SbomsCount     int       `json:"sbomsCount,omitempty"`
 }
 
 // Sbom represents an SBOM document
@@ -159,18 +159,18 @@ type SbomConnection struct {
 
 // SbomComponent represents a component in an SBOM
 type SbomComponent struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name,omitempty"`
-	Version     string   `json:"version,omitempty"`
-	Kind        string   `json:"kind,omitempty"`
-	Purl        string   `json:"purl,omitempty"`
-	Cpes        []string `json:"cpes,omitempty"`
-	LicensesExp string   `json:"licensesExp,omitempty"`
-	Group       string   `json:"group,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Primary     bool     `json:"primary"`
-	Internal    bool     `json:"internal"`
-	SbomID      string   `json:"sbomId"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name,omitempty"`
+	Version     string    `json:"version,omitempty"`
+	Kind        string    `json:"kind,omitempty"`
+	Purl        string    `json:"purl,omitempty"`
+	Cpes        []string  `json:"cpes,omitempty"`
+	LicensesExp string    `json:"licensesExp,omitempty"`
+	Group       string    `json:"group,omitempty"`
+	Description string    `json:"description,omitempty"`
+	Primary     bool      `json:"primary"`
+	Internal    bool      `json:"internal"`
+	SbomID      string    `json:"sbomId"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
@@ -192,8 +192,8 @@ type Vuln struct {
 	Source         string       `json:"source,omitempty"`
 	PublishedAt    FlexibleTime `json:"publishedAt,omitempty"`
 	LastModifiedAt FlexibleTime `json:"lastModifiedAt,omitempty"`
-	UpdatedAt      time.Time `json:"updatedAt"`
-	VulnInfo       *VulnInfo `json:"vulnInfo,omitempty"`
+	UpdatedAt      time.Time    `json:"updatedAt"`
+	VulnInfo       *VulnInfo    `json:"vulnInfo,omitempty"`
 }
 
 // VulnInfo contains additional vulnerability information
@@ -209,20 +209,20 @@ type VulnInfo struct {
 
 // ComponentVuln represents a vulnerability associated with a component
 type ComponentVuln struct {
-	ID              string        `json:"id"`
-	ComponentID     string        `json:"componentId"`
-	VulnID          string        `json:"vulnId"`
-	SbomID          string        `json:"sbomId,omitempty"`
-	FixedIn         string        `json:"fixedIn,omitempty"`
-	FixedVersions   []string      `json:"fixedVersions,omitempty"`
-	Detail          string        `json:"detail,omitempty"`
-	Impact          string        `json:"impact,omitempty"`
-	ActionStmt      string        `json:"actionStmt,omitempty"`
-	CreatedAt       time.Time     `json:"createdAt"`
-	UpdatedAt       time.Time     `json:"updatedAt"`
-	Component       *SbomComponent `json:"component,omitempty"`
-	Vuln            *Vuln         `json:"vuln,omitempty"`
-	VexStatus       *VexStatus    `json:"vexStatus,omitempty"`
+	ID               string            `json:"id"`
+	ComponentID      string            `json:"componentId"`
+	VulnID           string            `json:"vulnId"`
+	SbomID           string            `json:"sbomId,omitempty"`
+	FixedIn          string            `json:"fixedIn,omitempty"`
+	FixedVersions    []string          `json:"fixedVersions,omitempty"`
+	Detail           string            `json:"detail,omitempty"`
+	Impact           string            `json:"impact,omitempty"`
+	ActionStmt       string            `json:"actionStmt,omitempty"`
+	CreatedAt        time.Time         `json:"createdAt"`
+	UpdatedAt        time.Time         `json:"updatedAt"`
+	Component        *SbomComponent    `json:"component,omitempty"`
+	Vuln             *Vuln             `json:"vuln,omitempty"`
+	VexStatus        *VexStatus        `json:"vexStatus,omitempty"`
 	VexJustification *VexJustification `json:"vexJustification,omitempty"`
 }
 
