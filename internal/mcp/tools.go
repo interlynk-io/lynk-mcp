@@ -1388,6 +1388,18 @@ func (s *Server) handleGetTicketingStatus(ctx context.Context, request mcp.CallT
 	if productID, ok := args["product_id"].(string); ok {
 		input.ProductID = productID
 	}
+	if after, ok := args["products_after"].(string); ok {
+		input.ProductsAfter = after
+	}
+	if after, ok := args["policies_after"].(string); ok {
+		input.PoliciesAfter = after
+	}
+	if after, ok := args["ticket_links_after"].(string); ok {
+		input.TicketsAfter = after
+	}
+	if includeCreatedTickets, ok := args["include_created_tickets"].(bool); ok {
+		input.IncludeCreatedTickets = &includeCreatedTickets
+	}
 
 	status, err := s.client.GetTicketingStatus(ctx, input)
 	if err != nil {
@@ -1761,10 +1773,13 @@ func formatTicketingStatus(status *api.TicketingStatus) map[string]interface{} {
 	result := map[string]interface{}{
 		"productsTotalCount":  status.ProductsTotalCount,
 		"productsHasMore":     status.ProductsHasNextPage,
+		"productsEndCursor":   status.ProductsEndCursor,
 		"policiesTotalCount":  status.PoliciesTotalCount,
 		"policiesHasMore":     status.PoliciesHasNextPage,
+		"policiesEndCursor":   status.PoliciesEndCursor,
 		"ticketsScannedCount": status.TicketsScannedCount,
 		"ticketsHasMore":      status.TicketsHasNextPage,
+		"ticketsEndCursor":    status.TicketsEndCursor,
 	}
 
 	connections := make([]map[string]interface{}, len(status.Connections))

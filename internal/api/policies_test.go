@@ -118,7 +118,8 @@ func TestGetTicketingStatus_MapsJiraConfigProductsAndPolicies(t *testing.T) {
 						],
 						"totalCount": 1,
 						"pageInfo": {
-							"hasNextPage": false
+							"hasNextPage": true,
+							"endCursor": "products-cursor-2"
 						}
 					}
 				},
@@ -158,7 +159,8 @@ func TestGetTicketingStatus_MapsJiraConfigProductsAndPolicies(t *testing.T) {
 					],
 					"totalCount": 1,
 					"pageInfo": {
-						"hasNextPage": false
+						"hasNextPage": true,
+						"endCursor": "policies-cursor-2"
 					}
 				}
 			}`,
@@ -166,7 +168,14 @@ func TestGetTicketingStatus_MapsJiraConfigProductsAndPolicies(t *testing.T) {
 	}
 	client := &Client{gql: gql}
 
-	status, err := client.GetTicketingStatus(context.Background(), TicketingStatusInput{ProductsFirst: 5, PoliciesFirst: 10})
+	includeCreatedTickets := false
+	status, err := client.GetTicketingStatus(context.Background(), TicketingStatusInput{
+		ProductsFirst:         5,
+		ProductsAfter:         "products-cursor-1",
+		PoliciesFirst:         10,
+		PoliciesAfter:         "policies-cursor-1",
+		IncludeCreatedTickets: &includeCreatedTickets,
+	})
 	if err != nil {
 		t.Fatalf("GetTicketingStatus returned error: %v", err)
 	}
@@ -174,6 +183,18 @@ func TestGetTicketingStatus_MapsJiraConfigProductsAndPolicies(t *testing.T) {
 	request := gql.requests[0]
 	if request["productsFirst"] != 5 || request["policiesFirst"] != 10 {
 		t.Fatalf("unexpected variables: %#v", request)
+	}
+	if request["productsAfter"] != "products-cursor-1" || request["policiesAfter"] != "policies-cursor-1" {
+		t.Fatalf("unexpected cursor variables: %#v", request)
+	}
+	if request["includeTickets"] != false {
+		t.Fatalf("includeTickets = %#v, want false", request["includeTickets"])
+	}
+	if status.ProductsEndCursor != "products-cursor-2" || !status.ProductsHasNextPage {
+		t.Fatalf("unexpected products pagination: cursor=%q hasMore=%t", status.ProductsEndCursor, status.ProductsHasNextPage)
+	}
+	if status.PoliciesEndCursor != "policies-cursor-2" || !status.PoliciesHasNextPage {
+		t.Fatalf("unexpected policies pagination: cursor=%q hasMore=%t", status.PoliciesEndCursor, status.PoliciesHasNextPage)
 	}
 	if len(status.Connections) != 2 {
 		t.Fatalf("len(Connections) = %d, want 2", len(status.Connections))
@@ -229,6 +250,14 @@ func TestGetTicketingStatus_ProductFilterKeepsOnlyMatchingPolicyInclusions(t *te
 								"externalIssueTrackerSettings": []
 							}
 						]
+					},
+					"componentVulns": {
+						"nodes": [],
+						"totalCount": 42,
+						"pageInfo": {
+							"hasNextPage": true,
+							"endCursor": "tickets-cursor-2"
+						}
 					}
 				},
 				"policies": {
@@ -267,7 +296,8 @@ func TestGetTicketingStatus_ProductFilterKeepsOnlyMatchingPolicyInclusions(t *te
 					],
 					"totalCount": 1,
 					"pageInfo": {
-						"hasNextPage": false
+						"hasNextPage": true,
+						"endCursor": "policies-cursor-2"
 					}
 				}
 			}`,
@@ -275,7 +305,11 @@ func TestGetTicketingStatus_ProductFilterKeepsOnlyMatchingPolicyInclusions(t *te
 	}
 	client := &Client{gql: gql}
 
-	status, err := client.GetTicketingStatus(context.Background(), TicketingStatusInput{ProductID: "product-1"})
+	status, err := client.GetTicketingStatus(context.Background(), TicketingStatusInput{
+		ProductID:     "product-1",
+		PoliciesAfter: "policies-cursor-1",
+		TicketsAfter:  "tickets-cursor-1",
+	})
 	if err != nil {
 		t.Fatalf("GetTicketingStatus returned error: %v", err)
 	}
@@ -286,6 +320,18 @@ func TestGetTicketingStatus_ProductFilterKeepsOnlyMatchingPolicyInclusions(t *te
 	}
 	if _, ok := request["productsFirst"]; ok {
 		t.Fatalf("productsFirst set for product-specific query: %#v", request)
+	}
+	if request["policiesAfter"] != "policies-cursor-1" || request["ticketsAfter"] != "tickets-cursor-1" {
+		t.Fatalf("unexpected cursor variables: %#v", request)
+	}
+	if request["includeTickets"] != true {
+		t.Fatalf("includeTickets = %#v, want true", request["includeTickets"])
+	}
+	if status.PoliciesEndCursor != "policies-cursor-2" || !status.PoliciesHasNextPage {
+		t.Fatalf("unexpected policies pagination: cursor=%q hasMore=%t", status.PoliciesEndCursor, status.PoliciesHasNextPage)
+	}
+	if status.TicketsEndCursor != "tickets-cursor-2" || !status.TicketsHasNextPage || status.TicketsScannedCount != 42 {
+		t.Fatalf("unexpected ticket pagination: cursor=%q hasMore=%t count=%d", status.TicketsEndCursor, status.TicketsHasNextPage, status.TicketsScannedCount)
 	}
 	if len(status.Policies) != 1 {
 		t.Fatalf("len(Policies) = %d, want 1", len(status.Policies))

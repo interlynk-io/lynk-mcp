@@ -573,7 +573,7 @@ const (
 
 	// TicketingStatusQuery fetches Jira configuration and ticketing policy application status.
 	TicketingStatusQuery = `
-		query GetTicketingStatus($productsFirst: Int, $policiesFirst: Int, $ticketsFirst: Int) {
+		query GetTicketingStatus($productsFirst: Int, $productsAfter: String, $policiesFirst: Int, $policiesAfter: String, $ticketsFirst: Int, $ticketsAfter: String, $includeTickets: Boolean!) {
 			organization {
 				connections {
 					nodes {
@@ -599,7 +599,7 @@ const (
 						}
 					}
 				}
-				projectGroups(first: $productsFirst) {
+				projectGroups(first: $productsFirst, after: $productsAfter) {
 					nodes {
 						id
 						name
@@ -675,7 +675,7 @@ const (
 				screenId
 				updatedAt
 			}
-			policies(first: $policiesFirst) {
+			policies(first: $policiesFirst, after: $policiesAfter) {
 				nodes {
 					id
 					name
@@ -700,7 +700,7 @@ const (
 					endCursor
 				}
 			}
-			componentVulns(first: $ticketsFirst) {
+			componentVulns(first: $ticketsFirst, after: $ticketsAfter) @include(if: $includeTickets) {
 				nodes {
 					id
 					component {
@@ -745,7 +745,7 @@ const (
 
 	// ProductTicketingStatusQuery fetches ticketing status for one product/repository.
 	ProductTicketingStatusQuery = `
-		query GetProductTicketingStatus($productId: Uuid!, $policiesFirst: Int, $ticketsFirst: Int) {
+		query GetProductTicketingStatus($productId: Uuid!, $policiesFirst: Int, $policiesAfter: String, $ticketsFirst: Int, $ticketsAfter: String, $includeTickets: Boolean!) {
 			organization {
 				connections {
 					nodes {
@@ -839,7 +839,7 @@ const (
 						}
 					}
 				}
-				componentVulns(first: $ticketsFirst) {
+				componentVulns(first: $ticketsFirst, after: $ticketsAfter) @include(if: $includeTickets) {
 					nodes {
 						id
 						component {
@@ -880,7 +880,7 @@ const (
 					}
 				}
 			}
-			policies(first: $policiesFirst) {
+			policies(first: $policiesFirst, after: $policiesAfter) {
 				nodes {
 					id
 					name

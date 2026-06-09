@@ -451,8 +451,12 @@ func (s *Server) registerTools() {
 		mcp.WithDescription("Get ticketing provider connection/config status and policy application for products/repositories"),
 		mcp.WithString("product_id", mcp.Description("Optional product UUID to inspect one product/repository")),
 		mcp.WithNumber("products_limit", mcp.Description("Maximum number of products to inspect when product_id is omitted (default: 20)")),
+		mcp.WithString("products_after", mcp.Description("Cursor for the next products page")),
 		mcp.WithNumber("policies_limit", mcp.Description("Maximum number of policies to inspect (default: 50)")),
+		mcp.WithString("policies_after", mcp.Description("Cursor for the next policies page")),
 		mcp.WithNumber("ticket_links_limit", mcp.Description("Maximum number of component vulnerabilities to scan for created ticket links (default: 500)")),
+		mcp.WithString("ticket_links_after", mcp.Description("Cursor for the next created-ticket scan page")),
+		mcp.WithBoolean("include_created_tickets", mcp.Description("Whether to scan component vulnerabilities for created ticket links (default: true)")),
 	), s.handleGetTicketingStatus)
 
 	// License tools

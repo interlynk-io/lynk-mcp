@@ -94,10 +94,14 @@ type LicensesResult struct {
 
 // TicketingStatusInput contains parameters for fetching ticketing visibility.
 type TicketingStatusInput struct {
-	ProductID     string
-	ProductsFirst int
-	PoliciesFirst int
-	TicketsFirst  int
+	ProductID             string
+	ProductsFirst         int
+	ProductsAfter         string
+	PoliciesFirst         int
+	PoliciesAfter         string
+	TicketsFirst          int
+	TicketsAfter          string
+	IncludeCreatedTickets *bool
 }
 
 // TicketingStatus contains ticketing provider configuration and policy application details.
@@ -109,10 +113,13 @@ type TicketingStatus struct {
 	CreatedTickets           []CreatedTicket
 	ProductsTotalCount       int
 	ProductsHasNextPage      bool
+	ProductsEndCursor        string
 	PoliciesTotalCount       int
 	PoliciesHasNextPage      bool
+	PoliciesEndCursor        string
 	TicketsScannedCount      int
 	TicketsHasNextPage       bool
+	TicketsEndCursor         string
 }
 
 // TicketingConnectionStatus contains organization-level ticketing provider connection health.
@@ -462,9 +469,21 @@ func (c *Client) ListPolicyResults(ctx context.Context, input ListPolicyResultsI
 
 // GetTicketingStatus fetches Jira and ticketing policy application status.
 func (c *Client) GetTicketingStatus(ctx context.Context, input TicketingStatusInput) (*TicketingStatus, error) {
+	includeTickets := true
+	if input.IncludeCreatedTickets != nil {
+		includeTickets = *input.IncludeCreatedTickets
+	}
+
 	vars := map[string]interface{}{
-		"policiesFirst": defaultPositive(input.PoliciesFirst, 50),
-		"ticketsFirst":  defaultPositive(input.TicketsFirst, 500),
+		"policiesFirst":  defaultPositive(input.PoliciesFirst, 50),
+		"ticketsFirst":   defaultPositive(input.TicketsFirst, 500),
+		"includeTickets": includeTickets,
+	}
+	if input.PoliciesAfter != "" {
+		vars["policiesAfter"] = input.PoliciesAfter
+	}
+	if input.TicketsAfter != "" {
+		vars["ticketsAfter"] = input.TicketsAfter
 	}
 	query := graphql.TicketingStatusQuery
 	if input.ProductID != "" {
@@ -472,6 +491,9 @@ func (c *Client) GetTicketingStatus(ctx context.Context, input TicketingStatusIn
 		vars["productId"] = input.ProductID
 	} else {
 		vars["productsFirst"] = defaultPositive(input.ProductsFirst, 20)
+		if input.ProductsAfter != "" {
+			vars["productsAfter"] = input.ProductsAfter
+		}
 	}
 
 	var result struct {
@@ -483,7 +505,8 @@ func (c *Client) GetTicketingStatus(ctx context.Context, input TicketingStatusIn
 				Nodes      []ticketingProductNode `json:"nodes"`
 				TotalCount int                    `json:"totalCount"`
 				PageInfo   struct {
-					HasNextPage bool `json:"hasNextPage"`
+					HasNextPage bool   `json:"hasNextPage"`
+					EndCursor   string `json:"endCursor"`
 				} `json:"pageInfo"`
 			} `json:"projectGroups"`
 		} `json:"organization"`
@@ -494,7 +517,8 @@ func (c *Client) GetTicketingStatus(ctx context.Context, input TicketingStatusIn
 			Nodes      []ticketingPolicyNode `json:"nodes"`
 			TotalCount int                   `json:"totalCount"`
 			PageInfo   struct {
-				HasNextPage bool `json:"hasNextPage"`
+				HasNextPage bool   `json:"hasNextPage"`
+				EndCursor   string `json:"endCursor"`
 			} `json:"pageInfo"`
 		} `json:"policies"`
 	}
@@ -507,8 +531,10 @@ func (c *Client) GetTicketingStatus(ctx context.Context, input TicketingStatusIn
 		Connections:         mapTicketingConnections(result.Organization.Connections.Nodes),
 		ProductsTotalCount:  result.Organization.ProjectGroups.TotalCount,
 		ProductsHasNextPage: result.Organization.ProjectGroups.PageInfo.HasNextPage,
+		ProductsEndCursor:   result.Organization.ProjectGroups.PageInfo.EndCursor,
 		PoliciesTotalCount:  result.Policies.TotalCount,
 		PoliciesHasNextPage: result.Policies.PageInfo.HasNextPage,
+		PoliciesEndCursor:   result.Policies.PageInfo.EndCursor,
 	}
 	if result.JiraVulnManagementConfig != nil {
 		status.JiraVulnManagementConfig = mapJiraConfig(*result.JiraVulnManagementConfig)
@@ -522,10 +548,12 @@ func (c *Client) GetTicketingStatus(ctx context.Context, input TicketingStatusIn
 		status.CreatedTickets = mapCreatedTickets(result.ProjectGroup.ComponentVulns.Nodes)
 		status.TicketsScannedCount = result.ProjectGroup.ComponentVulns.TotalCount
 		status.TicketsHasNextPage = result.ProjectGroup.ComponentVulns.PageInfo.HasNextPage
+		status.TicketsEndCursor = result.ProjectGroup.ComponentVulns.PageInfo.EndCursor
 	} else {
 		status.CreatedTickets = mapCreatedTickets(result.ComponentVulns.Nodes)
 		status.TicketsScannedCount = result.ComponentVulns.TotalCount
 		status.TicketsHasNextPage = result.ComponentVulns.PageInfo.HasNextPage
+		status.TicketsEndCursor = result.ComponentVulns.PageInfo.EndCursor
 	}
 
 	productIDs := make(map[string]bool, len(productNodes))
@@ -583,7 +611,8 @@ type ticketingComponentVulns struct {
 	Nodes      []ticketingComponentVulnNode `json:"nodes"`
 	TotalCount int                          `json:"totalCount"`
 	PageInfo   struct {
-		HasNextPage bool `json:"hasNextPage"`
+		HasNextPage bool   `json:"hasNextPage"`
+		EndCursor   string `json:"endCursor"`
 	} `json:"pageInfo"`
 }
 
