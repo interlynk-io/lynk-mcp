@@ -243,9 +243,9 @@ const (
 
 	// ProjectSbomsQuery fetches SBOMs for a project
 	ProjectSbomsQuery = `
-		query GetProjectSboms($projectId: Uuid!, $first: Int, $after: String, $lifestage: [ProductLifecycleStageEnum!]) {
+		query GetProjectSboms($projectId: Uuid!, $first: Int, $after: String, $lifestage: [ProductLifecycleStageEnum!], $orderBy: SbomOrderByInput) {
 			project(id: $projectId) {
-				sbomVersions(first: $first, after: $after, lifestage: $lifestage) {
+				sbomVersions(first: $first, after: $after, lifestage: $lifestage, orderBy: $orderBy) {
 					nodes {
 						id
 						projectVersion
@@ -419,9 +419,9 @@ const (
 
 	// SbomDownloadQuery fetches SBOM download readiness and content
 	SbomDownloadQuery = `
-		query DownloadSbom($sbomId: Uuid!, $spec: SbomSpec, $specVersion: String, $includeVulns: Boolean, $requireCompleted: [SbomProcessingStageEnum!]) {
+		query DownloadSbom($sbomId: Uuid!, $spec: SbomSpec, $specVersion: String, $includeVulns: Boolean, $includeFiles: Boolean, $lite: Boolean, $dontPackageSbom: Boolean, $original: Boolean, $excludeParts: Boolean, $includeSupportStatus: Boolean, $supportLevelOnly: Boolean, $redactInternalComponents: Boolean, $tlpClassificationOverride: TlpClassificationEnum, $requireCompleted: [SbomProcessingStageEnum!]) {
 			sbom(sbomId: $sbomId) {
-				download(sbomId: $sbomId, spec: $spec, specVersion: $specVersion, includeVulns: $includeVulns, requireCompleted: $requireCompleted) {
+				download(sbomId: $sbomId, spec: $spec, specVersion: $specVersion, includeVulns: $includeVulns, includeFiles: $includeFiles, lite: $lite, dontPackageSbom: $dontPackageSbom, original: $original, excludeParts: $excludeParts, includeSupportStatus: $includeSupportStatus, supportLevelOnly: $supportLevelOnly, redactInternalComponents: $redactInternalComponents, tlpClassificationOverride: $tlpClassificationOverride, requireCompleted: $requireCompleted) {
 					ready
 					filename
 					contentType

@@ -289,8 +289,8 @@ Expected impact: triage agents can write approved dispositions in one reviewable
 - [x] Add per-component vulnerability summary to `get_version`:
   - Prefer API-side aggregation for performance.
   - Include severity counts and total count per component.
-- [x] Add programmatic CycloneDX VEX export:
-  - API has `Sbom.download`; verify whether `include_vulns` plus CycloneDX spec/spec version satisfies CycloneDX VEX needs.
+- [x] Add programmatic SBOM download:
+  - API has `Sbom.download`; expose spec/spec version, vulnerabilities, files, lite/original, support status, packaging, TLP override, and required processing-stage options.
   - Return readiness/status plus content metadata or download content according to API behavior.
   - Include permission and expiration behavior in docs.
 
@@ -298,7 +298,7 @@ Notes:
 - `fixedIn` is a VEX/edit field on `ComponentVuln` and may be empty when no disposition-specific fixed-in value has been recorded. The API also exposes `fixedVersions` from vulnerability intelligence; MCP now returns it alongside `fixedIn` and docs recommend preferring it when populated.
 - `find_version` uses the API's org-wide `projectVersions(search: ...)` resolver, then filters exact version string plus optional product and environment names.
 - `get_version` can include per-component vulnerability summaries with `include_component_vuln_summary=true`; summaries use the API's component `stats.vulnStats` and `stats.vulnTotalCount`.
-- `export_cyclonedx_vex` calls `Sbom.download` with `spec=CycloneDX`, `includeVulns=true`, and `requireCompleted=[VULN_SCAN]` by default. The API returns readiness, processing status, metadata, and inline content when ready; access and expiration behavior are controlled by the API's SBOM download authorization.
+- `download_sbom` calls `Sbom.download` with caller-selected options. The API returns readiness, processing status, metadata, and inline content when ready; access and expiration behavior are controlled by the API's SBOM download authorization.
 
 ## Priority Recommendation
 

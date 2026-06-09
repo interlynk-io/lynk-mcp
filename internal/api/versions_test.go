@@ -168,18 +168,30 @@ func TestDownloadSBOM_MapsCycloneDXDownload(t *testing.T) {
 	client := &Client{gql: gql}
 
 	includeVulns := true
+	includeFiles := true
+	lite := true
+	dontPackage := true
+	redactInternal := true
 	result, err := client.DownloadSBOM(context.Background(), DownloadSBOMInput{
-		VersionID:        "version-1",
-		Spec:             "CycloneDX",
-		SpecVersion:      "1.6",
-		IncludeVulns:     &includeVulns,
-		RequireCompleted: []string{"VULN_SCAN"},
+		VersionID:                 "version-1",
+		Spec:                      "CycloneDX",
+		SpecVersion:               "1.6",
+		IncludeVulns:              &includeVulns,
+		IncludeFiles:              &includeFiles,
+		Lite:                      &lite,
+		DontPackageSBOM:           &dontPackage,
+		RedactInternalComponents:  &redactInternal,
+		TLPClassificationOverride: "AMBER",
+		RequireCompleted:          []string{"VULN_SCAN"},
 	})
 	if err != nil {
 		t.Fatalf("DownloadSBOM returned error: %v", err)
 	}
 	request := gql.requests[0]
-	if request["spec"] != "CycloneDX" || request["includeVulns"] != true {
+	if request["spec"] != "CycloneDX" || request["includeVulns"] != true || request["includeFiles"] != true || request["lite"] != true {
+		t.Fatalf("unexpected download variables: %#v", request)
+	}
+	if request["dontPackageSbom"] != true || request["redactInternalComponents"] != true || request["tlpClassificationOverride"] != "AMBER" {
 		t.Fatalf("unexpected download variables: %#v", request)
 	}
 	if result.Filename != "bom.cdx.json" || !result.Ready || result.ProcessingStatus["vulnScan"] != "FINISHED" {
