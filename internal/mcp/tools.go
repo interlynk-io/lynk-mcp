@@ -2203,6 +2203,9 @@ func formatComponentVulns(componentVulns []api.ComponentVuln, matchReasons map[s
 			vuln["vexJustification"] = cv.VexJustification.Name
 			vuln["vexJustificationId"] = cv.VexJustification.ID
 		}
+		if len(cv.CustomFields) > 0 {
+			vuln["customFieldAttributes"] = formatComponentVulnCustomFields(cv.CustomFields)
+		}
 		vulns[i] = vuln
 	}
 	return vulns
@@ -3179,7 +3182,46 @@ func formatComponentVuln(componentVuln *api.ComponentVuln) map[string]interface{
 			"name": componentVuln.VexJustification.Name,
 		}
 	}
+	if len(componentVuln.CustomFields) > 0 {
+		result["customFieldAttributes"] = formatComponentVulnCustomFields(componentVuln.CustomFields)
+	}
 	return result
+}
+
+func formatComponentVulnCustomFields(customFields []api.ComponentVulnCustomField) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(customFields))
+	for i, customField := range customFields {
+		item := map[string]interface{}{
+			"id":                                   customField.ID,
+			"componentVulnCustomFieldDefinitionId": customField.ComponentVulnCustomFieldDefinitionID,
+			"value":                                customField.Value,
+			"vexableId":                            customField.VexableID,
+			"vexableType":                          customField.VexableType,
+			"createdAt":                            customField.CreatedAt,
+			"updatedAt":                            customField.UpdatedAt,
+		}
+		if customField.ComponentVulnCustomFieldDefinition != nil {
+			definition := customField.ComponentVulnCustomFieldDefinition
+			item["definition"] = map[string]interface{}{
+				"id":             definition.ID,
+				"displayName":    definition.DisplayName,
+				"fieldType":      definition.FieldType,
+				"internalName":   definition.InternalName,
+				"minValue":       intPointerValue(definition.MinValue),
+				"maxValue":       intPointerValue(definition.MaxValue),
+				"organizationId": definition.OrganizationID,
+			}
+		}
+		result[i] = item
+	}
+	return result
+}
+
+func intPointerValue(value *int) interface{} {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func formatBulkComponentVexResult(requestedIDs []string, result *api.BulkUpdateComponentVexResult) map[string]interface{} {

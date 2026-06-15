@@ -1114,6 +1114,49 @@ func TestComponentVulnMatchReasons_ReportsMatchingExceptionalMetadata(t *testing
 	}
 }
 
+func TestFormatComponentVulns_IncludesCustomFieldAttributes(t *testing.T) {
+	maxValue := 14
+	vulns := []api.ComponentVuln{
+		{
+			ID:        "component-vuln-1",
+			VersionID: "version-1",
+			CustomFields: []api.ComponentVulnCustomField{
+				{
+					ID:                                   "custom-field-1",
+					ComponentVulnCustomFieldDefinitionID: "field-def-1",
+					Value:                                "12",
+					VexableID:                            "component-vuln-1",
+					VexableType:                          "ComponentVuln",
+					ComponentVulnCustomFieldDefinition: &api.ComponentVulnCustomFieldDefinition{
+						ID:           "field-def-1",
+						DisplayName:  "CRM age",
+						FieldType:    "RANGE",
+						InternalName: "crm_age",
+						MaxValue:     &maxValue,
+					},
+				},
+			},
+		},
+	}
+
+	formatted := formatComponentVulns(vulns, nil, false)
+	customFields, ok := formatted[0]["customFieldAttributes"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("customFieldAttributes = %T %#v, want []map[string]interface{}", formatted[0]["customFieldAttributes"], formatted[0]["customFieldAttributes"])
+	}
+	if len(customFields) != 1 {
+		t.Fatalf("len(customFieldAttributes) = %d, want 1", len(customFields))
+	}
+	field := customFields[0]
+	if field["componentVulnCustomFieldDefinitionId"] != "field-def-1" || field["value"] != "12" {
+		t.Fatalf("unexpected custom field output: %#v", field)
+	}
+	definition := field["definition"].(map[string]interface{})
+	if definition["displayName"] != "CRM age" || definition["maxValue"] != 14 {
+		t.Fatalf("unexpected definition output: %#v", definition)
+	}
+}
+
 func TestFilterComponentVulnsByCvss_AppliesThresholds(t *testing.T) {
 	cvssMin := 9.0
 	filters := vulnerabilityMetadataFilters{CvssMin: &cvssMin}
