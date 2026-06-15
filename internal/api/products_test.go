@@ -17,6 +17,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -164,6 +165,111 @@ func TestListProducts_MapsImportedRepositoryTypesAndTicketingSummary(t *testing.
 		if summary.JiraProjectKeys[i] != wantKeys[i] {
 			t.Fatalf("JiraProjectKeys = %#v, want %#v", summary.JiraProjectKeys, wantKeys)
 		}
+	}
+}
+
+func TestListLabels_MapsInputsAndResults(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"labels": {
+					"nodes": [
+						{
+							"id": "label-1",
+							"name": "Aidash",
+							"color": "#0052cc",
+							"organizationId": "org-1",
+							"createdAt": "2026-01-01T00:00:00Z",
+							"updatedAt": "2026-01-02T00:00:00Z"
+						}
+					],
+					"totalCount": 2,
+					"pageInfo": {
+						"hasNextPage": true,
+						"endCursor": "label-cursor-2"
+					}
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	result, err := client.ListLabels(context.Background(), ListLabelsInput{
+		First:  10,
+		After:  "label-cursor-1",
+		Search: "Aidash",
+	})
+	if err != nil {
+		t.Fatalf("ListLabels returned error: %v", err)
+	}
+	if gql.requests[0]["first"] != 10 || gql.requests[0]["after"] != "label-cursor-1" || gql.requests[0]["search"] != "Aidash" {
+		t.Fatalf("unexpected request variables: %#v", gql.requests[0])
+	}
+	if result.TotalCount != 2 || !result.HasNextPage || result.EndCursor != "label-cursor-2" {
+		t.Fatalf("unexpected pagination result: %#v", result)
+	}
+	if len(result.Labels) != 1 || result.Labels[0].ID != "label-1" || result.Labels[0].Name != "Aidash" || result.Labels[0].Color != "#0052cc" {
+		t.Fatalf("unexpected labels: %#v", result.Labels)
+	}
+}
+
+func TestListProducts_SendsLabelIDsAndMapsLabels(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"organization": {
+					"projectGroups": {
+						"nodes": [
+							{
+								"id": "product-1",
+								"name": "Product 1",
+								"description": "",
+								"enabled": true,
+								"organizationId": "org-1",
+								"updatedAt": "2026-04-16T23:00:09Z",
+								"sbomsCount": 1,
+								"labels": [
+									{
+										"id": "label-1",
+										"name": "Aidash",
+										"color": "#0052cc",
+										"organizationId": "org-1",
+										"createdAt": "2026-01-01T00:00:00Z",
+										"updatedAt": "2026-01-02T00:00:00Z"
+									}
+								],
+								"importedRepository": null,
+								"projects": {"nodes": []}
+							}
+						],
+						"totalCount": 1,
+						"pageInfo": {
+							"hasNextPage": false,
+							"endCursor": ""
+						}
+					}
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	result, err := client.ListProducts(context.Background(), ListProductsInput{
+		First:    20,
+		LabelIDs: []string{"label-1", "label-2"},
+	})
+	if err != nil {
+		t.Fatalf("ListProducts returned error: %v", err)
+	}
+	if !reflect.DeepEqual(gql.requests[0]["labelIds"], []string{"label-1", "label-2"}) {
+		t.Fatalf("labelIds = %#v, want label-1,label-2", gql.requests[0]["labelIds"])
+	}
+	if len(result.Products) != 1 || len(result.Products[0].Labels) != 1 {
+		t.Fatalf("unexpected products: %#v", result.Products)
+	}
+	label := result.Products[0].Labels[0]
+	if label.ID != "label-1" || label.Name != "Aidash" || label.Color != "#0052cc" {
+		t.Fatalf("unexpected label: %#v", label)
 	}
 }
 

@@ -48,11 +48,34 @@ const (
 		}
 	`
 
+	// LabelsQuery fetches labels with pagination.
+	LabelsQuery = `
+		query GetLabels($first: Int, $after: String, $search: String) {
+			labels(first: $first, after: $after, search: $search) {
+				nodes {
+					id
+					name
+					color
+					organizationId
+					createdAt
+					updatedAt
+				}
+				totalCount
+				pageInfo {
+					hasNextPage
+					hasPreviousPage
+					startCursor
+					endCursor
+				}
+			}
+		}
+	`
+
 	// ProjectGroupsQuery fetches project groups with pagination
 	ProjectGroupsQuery = `
-		query GetProjectGroups($first: Int, $after: String, $search: String) {
+		query GetProjectGroups($first: Int, $after: String, $search: String, $labelIds: [Uuid!]) {
 			organization {
-				projectGroups(first: $first, after: $after, search: $search) {
+				projectGroups(first: $first, after: $after, search: $search, labelIds: $labelIds) {
 					nodes {
 						id
 						name
@@ -61,6 +84,14 @@ const (
 						organizationId
 						updatedAt
 						sbomsCount
+						labels {
+							id
+							name
+							color
+							organizationId
+							createdAt
+							updatedAt
+						}
 						importedRepository {
 							__typename
 							... on GithubRepository {
@@ -122,6 +153,14 @@ const (
 				organizationId
 				updatedAt
 				sbomsCount
+				labels {
+					id
+					name
+					color
+					organizationId
+					createdAt
+					updatedAt
+				}
 				importedRepository {
 					__typename
 					... on GithubRepository {

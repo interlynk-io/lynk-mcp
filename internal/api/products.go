@@ -34,9 +34,20 @@ type Product struct {
 	OrganizationID           string
 	UpdatedAt                time.Time
 	VersionsCount            int
+	Labels                   []Label
 	Repository               *ImportedRepository
 	TicketingDefaultsSummary *TicketingDefaultsSummary
 	Environments             []Environment
+}
+
+// Label represents an organization label applied to products.
+type Label struct {
+	ID             string
+	Name           string
+	Color          string
+	OrganizationID string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // Environment represents an environment (formerly project)
@@ -80,11 +91,65 @@ type ProductsResult struct {
 	EndCursor   string
 }
 
+// LabelsResult represents the result of listing labels.
+type LabelsResult struct {
+	Labels      []Label
+	TotalCount  int
+	HasNextPage bool
+	EndCursor   string
+}
+
 // ListProductsInput contains parameters for listing products
 type ListProductsInput struct {
+	First    int
+	After    string
+	Search   string
+	LabelIDs []string
+}
+
+// ListLabelsInput contains parameters for listing labels.
+type ListLabelsInput struct {
 	First  int
 	After  string
 	Search string
+}
+
+// ListLabels fetches labels with pagination.
+func (c *Client) ListLabels(ctx context.Context, input ListLabelsInput) (*LabelsResult, error) {
+	vars := make(map[string]interface{})
+	if input.First > 0 {
+		vars["first"] = input.First
+	} else {
+		vars["first"] = 50
+	}
+	if input.After != "" {
+		vars["after"] = input.After
+	}
+	if input.Search != "" {
+		vars["search"] = input.Search
+	}
+
+	var result struct {
+		Labels struct {
+			Nodes      []labelNode `json:"nodes"`
+			TotalCount int         `json:"totalCount"`
+			PageInfo   struct {
+				HasNextPage bool   `json:"hasNextPage"`
+				EndCursor   string `json:"endCursor"`
+			} `json:"pageInfo"`
+		} `json:"labels"`
+	}
+
+	if err := c.gql.Execute(ctx, graphql.LabelsQuery, vars, &result); err != nil {
+		return nil, err
+	}
+
+	return &LabelsResult{
+		Labels:      mapLabelNodes(result.Labels.Nodes),
+		TotalCount:  result.Labels.TotalCount,
+		HasNextPage: result.Labels.PageInfo.HasNextPage,
+		EndCursor:   result.Labels.PageInfo.EndCursor,
+	}, nil
 }
 
 // ListProducts fetches products with pagination
@@ -101,6 +166,9 @@ func (c *Client) ListProducts(ctx context.Context, input ListProductsInput) (*Pr
 	if input.Search != "" {
 		vars["search"] = input.Search
 	}
+	if len(input.LabelIDs) > 0 {
+		vars["labelIds"] = input.LabelIDs
+	}
 
 	var result struct {
 		Organization struct {
@@ -113,6 +181,7 @@ func (c *Client) ListProducts(ctx context.Context, input ListProductsInput) (*Pr
 					OrganizationID     string                 `json:"organizationId"`
 					UpdatedAt          time.Time              `json:"updatedAt"`
 					SbomsCount         int                    `json:"sbomsCount"`
+					Labels             []labelNode            `json:"labels"`
 					ImportedRepository *productRepositoryNode `json:"importedRepository"`
 					Projects           struct {
 						Nodes []struct {
@@ -143,6 +212,7 @@ func (c *Client) ListProducts(ctx context.Context, input ListProductsInput) (*Pr
 			OrganizationID:           n.OrganizationID,
 			UpdatedAt:                n.UpdatedAt,
 			VersionsCount:            n.SbomsCount,
+			Labels:                   mapLabelNodes(n.Labels),
 			Repository:               mapProductRepository(n.ImportedRepository),
 			TicketingDefaultsSummary: summarizeTicketingDefaults(n.Projects.Nodes),
 		}
@@ -180,6 +250,7 @@ func (c *Client) GetProduct(ctx context.Context, id string) (*Product, error) {
 				OrganizationID     string                 `json:"organizationId"`
 				UpdatedAt          time.Time              `json:"updatedAt"`
 				SbomsCount         int                    `json:"sbomsCount"`
+				Labels             []labelNode            `json:"labels"`
 				ImportedRepository *productRepositoryNode `json:"importedRepository"`
 				Projects           struct {
 					Nodes []struct {
@@ -212,6 +283,7 @@ func (c *Client) GetProduct(ctx context.Context, id string) (*Product, error) {
 				OrganizationID: result.ProjectGroup.OrganizationID,
 				UpdatedAt:      result.ProjectGroup.UpdatedAt,
 				VersionsCount:  result.ProjectGroup.SbomsCount,
+				Labels:         mapLabelNodes(result.ProjectGroup.Labels),
 				Repository:     mapProductRepository(result.ProjectGroup.ImportedRepository),
 			}
 		}
@@ -315,6 +387,15 @@ type productRepositoryNode struct {
 	WebhookEnabled bool   `json:"webhookEnabled"`
 }
 
+type labelNode struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Color          string    `json:"color"`
+	OrganizationID string    `json:"organizationId"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
 type productIssueTrackerSettingNode struct {
 	ID             string      `json:"id"`
 	Provider       string      `json:"provider"`
@@ -326,6 +407,24 @@ type productIssueTrackerSettingNode struct {
 	Components     interface{} `json:"components"`
 	EnableJiraSync bool        `json:"enableJiraSync"`
 	UpdatedAt      time.Time   `json:"updatedAt"`
+}
+
+func mapLabelNodes(nodes []labelNode) []Label {
+	if len(nodes) == 0 {
+		return nil
+	}
+	labels := make([]Label, len(nodes))
+	for i, node := range nodes {
+		labels[i] = Label{
+			ID:             node.ID,
+			Name:           node.Name,
+			Color:          node.Color,
+			OrganizationID: node.OrganizationID,
+			CreatedAt:      node.CreatedAt,
+			UpdatedAt:      node.UpdatedAt,
+		}
+	}
+	return labels
 }
 
 func mapProductRepository(node *productRepositoryNode) *ImportedRepository {

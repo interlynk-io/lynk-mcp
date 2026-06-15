@@ -56,10 +56,36 @@ func (s *Server) handleGetOrganization(ctx context.Context, request mcp.CallTool
 	return formatResult(result)
 }
 
+func (s *Server) handleListLabels(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	input := api.ListLabelsInput{
+		First: getIntParam(args, "limit", 50),
+	}
+	if search, ok := args["search"].(string); ok {
+		input.Search = search
+	}
+	if after, ok := args["after"].(string); ok {
+		input.After = after
+	}
+
+	result, err := s.client.ListLabels(ctx, input)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to list labels: %v", err)), nil
+	}
+
+	return formatResult(map[string]interface{}{
+		"labels":     formatLabels(result.Labels),
+		"totalCount": result.TotalCount,
+		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
+	})
+}
+
 func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	input := api.ListProductsInput{
-		First: getIntParam(args, "limit", 20),
+		First:    getIntParam(args, "limit", 20),
+		LabelIDs: getStringSliceParam(args, "label_ids"),
 	}
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
@@ -81,6 +107,7 @@ func (s *Server) handleListProducts(ctx context.Context, request mcp.CallToolReq
 			"description":   p.Description,
 			"enabled":       p.Enabled,
 			"versionsCount": p.VersionsCount,
+			"labels":        formatLabels(p.Labels),
 			"updatedAt":     p.UpdatedAt,
 		}
 		if p.Repository != nil {
@@ -132,6 +159,7 @@ func (s *Server) handleGetProduct(ctx context.Context, request mcp.CallToolReque
 		"description":   product.Description,
 		"enabled":       product.Enabled,
 		"versionsCount": product.VersionsCount,
+		"labels":        formatLabels(product.Labels),
 		"updatedAt":     product.UpdatedAt,
 		"environments":  environments,
 	}
@@ -2348,6 +2376,21 @@ func formatJiraDefaults(defaults *api.JiraDefaults) map[string]interface{} {
 	}
 	if defaults.Components != nil {
 		result["components"] = defaults.Components
+	}
+	return result
+}
+
+func formatLabels(labels []api.Label) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(labels))
+	for i, label := range labels {
+		result[i] = map[string]interface{}{
+			"id":             label.ID,
+			"name":           label.Name,
+			"color":          label.Color,
+			"organizationId": label.OrganizationID,
+			"createdAt":      label.CreatedAt,
+			"updatedAt":      label.UpdatedAt,
+		}
 	}
 	return result
 }

@@ -27,6 +27,7 @@ import (
 
 type fakeLynkClient struct {
 	lynkClient
+	listLabelsInput             api.ListLabelsInput
 	listProductsInput           api.ListProductsInput
 	listVersionVulnsInput       api.ListVersionVulnsInput
 	listVersionVulnsInputs      []api.ListVersionVulnsInput
@@ -40,6 +41,25 @@ type fakeLynkClient struct {
 	ticketingStatusInput        api.TicketingStatusInput
 }
 
+func (f *fakeLynkClient) ListLabels(ctx context.Context, input api.ListLabelsInput) (*api.LabelsResult, error) {
+	f.listLabelsInput = input
+	return &api.LabelsResult{
+		Labels: []api.Label{
+			{
+				ID:             "label-1",
+				Name:           "Aidash",
+				Color:          "#0052cc",
+				OrganizationID: "org-1",
+				CreatedAt:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+				UpdatedAt:      time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		TotalCount:  2,
+		HasNextPage: true,
+		EndCursor:   "label-cursor-2",
+	}, nil
+}
+
 func (f *fakeLynkClient) ListProducts(ctx context.Context, input api.ListProductsInput) (*api.ProductsResult, error) {
 	f.listProductsInput = input
 	return &api.ProductsResult{
@@ -50,6 +70,14 @@ func (f *fakeLynkClient) ListProducts(ctx context.Context, input api.ListProduct
 				Description:   "First product",
 				Enabled:       true,
 				VersionsCount: 7,
+				Labels: []api.Label{
+					{
+						ID:             "label-1",
+						Name:           "Aidash",
+						Color:          "#0052cc",
+						OrganizationID: "org-1",
+					},
+				},
 				Repository: &api.ImportedRepository{
 					Type:           "GithubRepository",
 					ID:             "repo-1",
@@ -78,6 +106,14 @@ func (f *fakeLynkClient) GetProduct(ctx context.Context, id string) (*api.Produc
 		Description:   "First product",
 		Enabled:       true,
 		VersionsCount: 7,
+		Labels: []api.Label{
+			{
+				ID:             "label-1",
+				Name:           "Aidash",
+				Color:          "#0052cc",
+				OrganizationID: "org-1",
+			},
+		},
 		Repository: &api.ImportedRepository{
 			Type:           "BitbucketRepository",
 			ID:             "repo-1",
@@ -392,6 +428,10 @@ func TestHandleListProducts_PassesAfterAndReturnsEndCursor(t *testing.T) {
 				"limit":  2,
 				"after":  "cursor-1",
 				"search": "Product",
+				"label_ids": []interface{}{
+					"label-1",
+					"label-2",
+				},
 			},
 		},
 	})
@@ -411,6 +451,9 @@ func TestHandleListProducts_PassesAfterAndReturnsEndCursor(t *testing.T) {
 	if client.listProductsInput.First != 2 {
 		t.Fatalf("First = %#v, want 2", client.listProductsInput.First)
 	}
+	if !reflect.DeepEqual(client.listProductsInput.LabelIDs, []string{"label-1", "label-2"}) {
+		t.Fatalf("LabelIDs = %#v, want label-1,label-2", client.listProductsInput.LabelIDs)
+	}
 
 	output := toolResultMap(t, result)
 	if output["endCursor"] != "cursor-2" {
@@ -421,6 +464,11 @@ func TestHandleListProducts_PassesAfterAndReturnsEndCursor(t *testing.T) {
 	}
 	products := output["products"].([]interface{})
 	product := products[0].(map[string]interface{})
+	labels := product["labels"].([]interface{})
+	label := labels[0].(map[string]interface{})
+	if label["id"] != "label-1" || label["name"] != "Aidash" {
+		t.Fatalf("unexpected labels output: %#v", labels)
+	}
 	repository := product["repository"].(map[string]interface{})
 	if repository["importStatus"] != "completed" || repository["fullName"] != "org/repo" {
 		t.Fatalf("unexpected repository output: %#v", repository)
@@ -428,6 +476,39 @@ func TestHandleListProducts_PassesAfterAndReturnsEndCursor(t *testing.T) {
 	summary := product["ticketingDefaultsSummary"].(map[string]interface{})
 	if summary["jiraConfigured"] != true {
 		t.Fatalf("unexpected ticketing summary output: %#v", summary)
+	}
+}
+
+func TestHandleListLabels_PassesFiltersAndReturnsLabels(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleListLabels(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"limit":  10,
+				"after":  "label-cursor-1",
+				"search": "Aidash",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListLabels returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListLabels returned tool error: %#v", result.Content)
+	}
+	if client.listLabelsInput.First != 10 || client.listLabelsInput.After != "label-cursor-1" || client.listLabelsInput.Search != "Aidash" {
+		t.Fatalf("unexpected ListLabels input: %#v", client.listLabelsInput)
+	}
+
+	output := toolResultMap(t, result)
+	if output["endCursor"] != "label-cursor-2" || output["hasMore"] != true {
+		t.Fatalf("unexpected pagination output: %#v", output)
+	}
+	labels := output["labels"].([]interface{})
+	label := labels[0].(map[string]interface{})
+	if label["id"] != "label-1" || label["name"] != "Aidash" || label["color"] != "#0052cc" {
+		t.Fatalf("unexpected labels output: %#v", labels)
 	}
 }
 
@@ -445,6 +526,11 @@ func TestHandleGetProduct_ReturnsRepositoryAndJiraDefaults(t *testing.T) {
 	repository := output["repository"].(map[string]interface{})
 	if repository["type"] != "BitbucketRepository" || repository["importStatus"] != "completed" {
 		t.Fatalf("unexpected repository output: %#v", repository)
+	}
+	labels := output["labels"].([]interface{})
+	label := labels[0].(map[string]interface{})
+	if label["id"] != "label-1" || label["name"] != "Aidash" {
+		t.Fatalf("unexpected labels output: %#v", labels)
 	}
 	environments := output["environments"].([]interface{})
 	env := environments[0].(map[string]interface{})
