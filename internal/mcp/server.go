@@ -25,6 +25,7 @@ import (
 
 type lynkClient interface {
 	GetOrganization(ctx context.Context) (*api.Organization, error)
+	ListLabels(ctx context.Context, input api.ListLabelsInput) (*api.LabelsResult, error)
 	ListProducts(ctx context.Context, input api.ListProductsInput) (*api.ProductsResult, error)
 	GetProduct(ctx context.Context, id string) (*api.Product, error)
 	ListVersions(ctx context.Context, input api.ListVersionsInput) (*api.VersionsResult, error)
@@ -108,10 +109,18 @@ func (s *Server) registerTools() {
 		mcp.WithDescription("Get current organization information including metrics"),
 	), s.handleGetOrganization)
 
+	s.mcp.AddTool(mcp.NewTool("list_labels",
+		mcp.WithDescription("List organization labels that can be used to filter products"),
+		mcp.WithString("search", mcp.Description("Search term to filter labels by name")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page")),
+	), s.handleListLabels)
+
 	// Product tools
 	s.mcp.AddTool(mcp.NewTool("list_products",
 		mcp.WithDescription("List all products in the organization"),
 		mcp.WithString("search", mcp.Description("Search term to filter by name")),
+		mcp.WithArray("label_ids", mcp.Description("Filter products by one or more label UUIDs"), mcp.WithStringItems()),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 20)")),
 		mcp.WithString("after", mcp.Description("Cursor for the next page")),
 	), s.handleListProducts)
