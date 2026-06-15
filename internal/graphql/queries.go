@@ -601,6 +601,24 @@ const (
 							id
 							name
 						}
+						componentVulnCustomFields {
+							id
+							componentVulnCustomFieldDefinitionId
+							value
+							vexableId
+							vexableType
+							createdAt
+							updatedAt
+							componentVulnCustomFieldDefinition {
+								id
+								displayName
+								fieldType
+								internalName
+								minValue
+								maxValue
+								organizationId
+							}
+						}
 					}
 					totalCount
 					pageInfo {
@@ -694,6 +712,24 @@ const (
 					vexStatus {
 						id
 						name
+					}
+					componentVulnCustomFields {
+						id
+						componentVulnCustomFieldDefinitionId
+						value
+						vexableId
+						vexableType
+						createdAt
+						updatedAt
+						componentVulnCustomFieldDefinition {
+							id
+							displayName
+							fieldType
+							internalName
+							minValue
+							maxValue
+							organizationId
+						}
 					}
 				}
 				totalCount

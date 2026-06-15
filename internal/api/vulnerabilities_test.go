@@ -123,6 +123,91 @@ func TestListVersionVulns_AcceptsNestedVulnTimestampsWithoutTimezone(t *testing.
 	}
 }
 
+func TestListVersionVulns_MapsCustomFieldAttributes(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"sbom": {
+					"vulns": {
+						"nodes": [
+							{
+								"id": "component-vuln-1",
+								"componentId": "component-1",
+								"vulnId": "vuln-1",
+								"sbomId": "version-1",
+								"fixedIn": "",
+								"fixedVersions": [],
+								"detail": "",
+								"impact": "",
+								"actionStmt": "",
+								"createdAt": "2026-04-16T23:00:09Z",
+								"updatedAt": "2026-04-16T23:00:09Z",
+								"component": null,
+								"vuln": null,
+								"vexStatus": null,
+								"vexJustification": null,
+								"componentVulnCustomFields": [
+									{
+										"id": "custom-field-1",
+										"componentVulnCustomFieldDefinitionId": "field-def-1",
+										"value": "12",
+										"vexableId": "component-vuln-1",
+										"vexableType": "ComponentVuln",
+										"createdAt": "2026-04-17T00:00:00Z",
+										"updatedAt": "2026-04-18T00:00:00Z",
+										"componentVulnCustomFieldDefinition": {
+											"id": "field-def-1",
+											"displayName": "CRM age",
+											"fieldType": "RANGE",
+											"internalName": "crm_age",
+											"minValue": 0,
+											"maxValue": 14,
+											"organizationId": "org-1"
+										}
+									}
+								]
+							}
+						],
+						"totalCount": 1,
+						"pageInfo": {
+							"hasNextPage": false,
+							"endCursor": ""
+						}
+					}
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	result, err := client.ListVersionVulns(context.Background(), ListVersionVulnsInput{VersionID: "version-1"})
+	if err != nil {
+		t.Fatalf("ListVersionVulns returned error: %v", err)
+	}
+
+	if len(result.ComponentVulns) != 1 {
+		t.Fatalf("len(ComponentVulns) = %d, want 1", len(result.ComponentVulns))
+	}
+	customFields := result.ComponentVulns[0].CustomFields
+	if len(customFields) != 1 {
+		t.Fatalf("len(CustomFields) = %d, want 1", len(customFields))
+	}
+	field := customFields[0]
+	if field.ID != "custom-field-1" || field.ComponentVulnCustomFieldDefinitionID != "field-def-1" || field.Value != "12" {
+		t.Fatalf("unexpected custom field: %#v", field)
+	}
+	if field.ComponentVulnCustomFieldDefinition == nil {
+		t.Fatal("expected custom field definition")
+	}
+	definition := field.ComponentVulnCustomFieldDefinition
+	if definition.DisplayName != "CRM age" || definition.FieldType != "RANGE" || definition.InternalName != "crm_age" {
+		t.Fatalf("unexpected custom field definition: %#v", definition)
+	}
+	if definition.MaxValue == nil || *definition.MaxValue != 14 {
+		t.Fatalf("MaxValue = %#v, want 14", definition.MaxValue)
+	}
+}
+
 func TestListComponentVulns_PassesComponentIDs(t *testing.T) {
 	gql := &fakeGraphQLExecutor{
 		pages: []string{
@@ -244,6 +329,74 @@ func TestListComponentVulns_SendsMetadataAndScopeFilters(t *testing.T) {
 	}
 	if got := gql.requests[0]["projectIds"]; !stringSlicesEqual(got, []string{"environment-1"}) {
 		t.Fatalf("projectIds = %#v, want environment-1", got)
+	}
+}
+
+func TestListComponentVulns_MapsCustomFieldAttributes(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"componentVulns": {
+					"nodes": [
+						{
+							"id": "component-vuln-1",
+							"componentId": "component-1",
+							"vulnId": "vuln-1",
+							"sbomId": "version-1",
+							"fixedIn": "",
+							"fixedVersions": [],
+							"createdAt": "2026-04-16T23:00:09Z",
+							"updatedAt": "2026-04-16T23:00:09Z",
+							"component": null,
+							"vuln": null,
+							"vexStatus": null,
+							"componentVulnCustomFields": [
+								{
+									"id": "custom-field-1",
+									"componentVulnCustomFieldDefinitionId": "field-def-1",
+									"value": "7",
+									"vexableId": "component-vuln-1",
+									"vexableType": "ComponentVuln",
+									"createdAt": "2026-04-17T00:00:00Z",
+									"updatedAt": "2026-04-18T00:00:00Z",
+									"componentVulnCustomFieldDefinition": {
+										"id": "field-def-1",
+										"displayName": "CRM age",
+										"fieldType": "RANGE",
+										"internalName": "crm_age",
+										"minValue": 0,
+										"maxValue": 14,
+										"organizationId": "org-1"
+									}
+								}
+							]
+						}
+					],
+					"totalCount": 1,
+					"pageInfo": {
+						"hasNextPage": false,
+						"endCursor": ""
+					}
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	result, err := client.ListComponentVulns(context.Background(), ListComponentVulnsInput{})
+	if err != nil {
+		t.Fatalf("ListComponentVulns returned error: %v", err)
+	}
+
+	if len(result.ComponentVulns) != 1 {
+		t.Fatalf("len(ComponentVulns) = %d, want 1", len(result.ComponentVulns))
+	}
+	customFields := result.ComponentVulns[0].CustomFields
+	if len(customFields) != 1 {
+		t.Fatalf("len(CustomFields) = %d, want 1", len(customFields))
+	}
+	if customFields[0].Value != "7" || customFields[0].ComponentVulnCustomFieldDefinition == nil {
+		t.Fatalf("unexpected custom field: %#v", customFields[0])
 	}
 }
 

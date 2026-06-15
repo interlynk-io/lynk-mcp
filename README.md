@@ -382,6 +382,8 @@ Product responses include lightweight repository import metadata when available.
 
 Vulnerability responses include both `fixedIn` and `fixedVersions`; prefer `fixedVersions` when present because it is structured.
 
+Vulnerability responses include `customFieldAttributes` when component vulnerability custom fields are present. Each attribute includes its value, field definition ID, and definition metadata such as `displayName`, `internalName`, and `fieldType`.
+
 ### VEX
 
 | Tool | Description |
@@ -390,6 +392,8 @@ Vulnerability responses include both `fixedIn` and `fixedVersions`; prefer `fixe
 | `list_vex_justifications` | List VEX justifications with UUIDs for CVE triage |
 | `update_component_vex` | Update VEX data for a component vulnerability; requires `confirm=true` |
 | `bulk_update_component_vex` | Update VEX data for multiple component vulnerabilities with one shared payload; requires `confirm=true` |
+
+Use `component_vuln_custom_field_attributes` on `update_component_vex` or `bulk_update_component_vex` to update custom VEX fields. Pass `componentVulnCustomFieldDefinitionId` and `value` to set a field, include `id` when updating an existing attribute, or pass `_destroy: true` with `id` to remove one.
 
 ### Supply-Chain Security Incidents
 

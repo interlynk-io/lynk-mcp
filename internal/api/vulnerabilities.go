@@ -65,6 +65,7 @@ type ComponentVuln struct {
 	Vuln             *Vuln
 	VexStatus        *VexStatus
 	VexJustification *VexJustification
+	CustomFields     []ComponentVulnCustomField
 }
 
 // VexStatus represents a VEX status
@@ -77,6 +78,48 @@ type VexStatus struct {
 type VexJustification struct {
 	ID   string
 	Name string
+}
+
+// ComponentVulnCustomField represents a custom field value attached to a component vulnerability.
+type ComponentVulnCustomField struct {
+	ID                                   string
+	ComponentVulnCustomFieldDefinitionID string
+	Value                                string
+	VexableID                            string
+	VexableType                          string
+	CreatedAt                            time.Time
+	UpdatedAt                            time.Time
+	ComponentVulnCustomFieldDefinition   *ComponentVulnCustomFieldDefinition
+}
+
+// ComponentVulnCustomFieldDefinition describes a custom field available for component vulnerabilities.
+type ComponentVulnCustomFieldDefinition struct {
+	ID             string
+	DisplayName    string
+	FieldType      string
+	InternalName   string
+	MinValue       *int
+	MaxValue       *int
+	OrganizationID string
+}
+
+type graphQLComponentVulnCustomField struct {
+	ID                                   string    `json:"id"`
+	ComponentVulnCustomFieldDefinitionID string    `json:"componentVulnCustomFieldDefinitionId"`
+	Value                                string    `json:"value"`
+	VexableID                            string    `json:"vexableId"`
+	VexableType                          string    `json:"vexableType"`
+	CreatedAt                            time.Time `json:"createdAt"`
+	UpdatedAt                            time.Time `json:"updatedAt"`
+	ComponentVulnCustomFieldDefinition   *struct {
+		ID             string `json:"id"`
+		DisplayName    string `json:"displayName"`
+		FieldType      string `json:"fieldType"`
+		InternalName   string `json:"internalName"`
+		MinValue       *int   `json:"minValue"`
+		MaxValue       *int   `json:"maxValue"`
+		OrganizationID string `json:"organizationId"`
+	} `json:"componentVulnCustomFieldDefinition"`
 }
 
 // ComponentVulnsResult represents the result of listing component vulnerabilities
@@ -177,6 +220,7 @@ func (c *Client) ListVersionVulns(ctx context.Context, input ListVersionVulnsInp
 						ID   string `json:"id"`
 						Name string `json:"name"`
 					} `json:"vexJustification"`
+					ComponentVulnCustomFields []graphQLComponentVulnCustomField `json:"componentVulnCustomFields"`
 				} `json:"nodes"`
 				TotalCount int `json:"totalCount"`
 				PageInfo   struct {
@@ -205,6 +249,7 @@ func (c *Client) ListVersionVulns(ctx context.Context, input ListVersionVulnsInp
 			ActionStmt:    n.ActionStmt,
 			CreatedAt:     n.CreatedAt,
 			UpdatedAt:     n.UpdatedAt,
+			CustomFields:  mapComponentVulnCustomFields(n.ComponentVulnCustomFields),
 		}
 		if n.Component != nil {
 			cv.Component = &VersionComponent{
@@ -465,6 +510,7 @@ func (c *Client) ListComponentVulns(ctx context.Context, input ListComponentVuln
 					ID   string `json:"id"`
 					Name string `json:"name"`
 				} `json:"vexStatus"`
+				ComponentVulnCustomFields []graphQLComponentVulnCustomField `json:"componentVulnCustomFields"`
 			} `json:"nodes"`
 			TotalCount int `json:"totalCount"`
 			PageInfo   struct {
@@ -489,6 +535,7 @@ func (c *Client) ListComponentVulns(ctx context.Context, input ListComponentVuln
 			FixedVersions: n.FixedVersions,
 			CreatedAt:     n.CreatedAt,
 			UpdatedAt:     n.UpdatedAt,
+			CustomFields:  mapComponentVulnCustomFields(n.ComponentVulnCustomFields),
 		}
 		if n.Component != nil {
 			cv.Component = &VersionComponent{
@@ -531,6 +578,36 @@ func (c *Client) ListComponentVulns(ctx context.Context, input ListComponentVuln
 		HasNextPage:    result.ComponentVulns.PageInfo.HasNextPage,
 		EndCursor:      result.ComponentVulns.PageInfo.EndCursor,
 	}, nil
+}
+
+func mapComponentVulnCustomFields(fields []graphQLComponentVulnCustomField) []ComponentVulnCustomField {
+	if len(fields) == 0 {
+		return nil
+	}
+	result := make([]ComponentVulnCustomField, len(fields))
+	for i, field := range fields {
+		result[i] = ComponentVulnCustomField{
+			ID:                                   field.ID,
+			ComponentVulnCustomFieldDefinitionID: field.ComponentVulnCustomFieldDefinitionID,
+			Value:                                field.Value,
+			VexableID:                            field.VexableID,
+			VexableType:                          field.VexableType,
+			CreatedAt:                            field.CreatedAt,
+			UpdatedAt:                            field.UpdatedAt,
+		}
+		if field.ComponentVulnCustomFieldDefinition != nil {
+			result[i].ComponentVulnCustomFieldDefinition = &ComponentVulnCustomFieldDefinition{
+				ID:             field.ComponentVulnCustomFieldDefinition.ID,
+				DisplayName:    field.ComponentVulnCustomFieldDefinition.DisplayName,
+				FieldType:      field.ComponentVulnCustomFieldDefinition.FieldType,
+				InternalName:   field.ComponentVulnCustomFieldDefinition.InternalName,
+				MinValue:       field.ComponentVulnCustomFieldDefinition.MinValue,
+				MaxValue:       field.ComponentVulnCustomFieldDefinition.MaxValue,
+				OrganizationID: field.ComponentVulnCustomFieldDefinition.OrganizationID,
+			}
+		}
+	}
+	return result
 }
 
 func addEpssRangeVar(vars map[string]interface{}, min, max *float64) {
