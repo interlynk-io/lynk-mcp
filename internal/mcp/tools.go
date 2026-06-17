@@ -1013,6 +1013,26 @@ func (s *Server) handleListVexJustifications(ctx context.Context, request mcp.Ca
 	})
 }
 
+func (s *Server) handleListComponentVulnCustomFieldDefinitions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	input := api.ListComponentVulnCustomFieldDefinitionsInput{
+		First: getIntParam(args, "limit", 0),
+		After: stringParam(args, "after"),
+	}
+
+	result, err := s.client.ListComponentVulnCustomFieldDefinitions(ctx, input)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to list component vulnerability custom field definitions: %v", err)), nil
+	}
+
+	return formatResult(map[string]interface{}{
+		"componentVulnCustomFieldDefinitions": formatComponentVulnCustomFieldDefinitions(result.Definitions),
+		"totalCount":                          result.TotalCount,
+		"hasMore":                             result.HasNextPage,
+		"endCursor":                           result.EndCursor,
+	})
+}
+
 func (s *Server) handleUpdateComponentVex(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	if !confirmed(args) {
@@ -3256,6 +3276,24 @@ func formatComponentVulnCustomFields(customFields []api.ComponentVulnCustomField
 			}
 		}
 		result[i] = item
+	}
+	return result
+}
+
+func formatComponentVulnCustomFieldDefinitions(definitions []api.ComponentVulnCustomFieldDefinition) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(definitions))
+	for i, definition := range definitions {
+		result[i] = map[string]interface{}{
+			"id":             definition.ID,
+			"displayName":    definition.DisplayName,
+			"fieldType":      definition.FieldType,
+			"internalName":   definition.InternalName,
+			"minValue":       intPointerValue(definition.MinValue),
+			"maxValue":       intPointerValue(definition.MaxValue),
+			"organizationId": definition.OrganizationID,
+			"createdAt":      definition.CreatedAt,
+			"updatedAt":      definition.UpdatedAt,
+		}
 	}
 	return result
 }

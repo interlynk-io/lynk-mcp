@@ -1303,6 +1303,30 @@ const (
 		}
 	`
 
+	// ComponentVulnCustomFieldDefinitionsQuery fetches custom field definitions for component vulnerabilities.
+	ComponentVulnCustomFieldDefinitionsQuery = `
+		query ComponentVulnCustomFieldDefinitions($first: Int, $after: String) {
+			componentVulnCustomFieldDefinitions(first: $first, after: $after) {
+				nodes {
+					id
+					displayName
+					fieldType
+					internalName
+					minValue
+					maxValue
+					organizationId
+					createdAt
+					updatedAt
+				}
+				totalCount
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+			}
+		}
+	`
+
 	// VexStatusesQuery fetches all VEX statuses
 	VexStatusesQuery = `
 		query GetVexStatuses {
