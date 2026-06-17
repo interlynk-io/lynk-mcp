@@ -101,6 +101,16 @@ type ComponentVulnCustomFieldDefinition struct {
 	MinValue       *int
 	MaxValue       *int
 	OrganizationID string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+// ComponentVulnCustomFieldDefinitionsResult represents custom field definitions with pagination.
+type ComponentVulnCustomFieldDefinitionsResult struct {
+	Definitions []ComponentVulnCustomFieldDefinition
+	TotalCount  int
+	HasNextPage bool
+	EndCursor   string
 }
 
 type graphQLComponentVulnCustomField struct {
@@ -112,13 +122,15 @@ type graphQLComponentVulnCustomField struct {
 	CreatedAt                            time.Time `json:"createdAt"`
 	UpdatedAt                            time.Time `json:"updatedAt"`
 	ComponentVulnCustomFieldDefinition   *struct {
-		ID             string `json:"id"`
-		DisplayName    string `json:"displayName"`
-		FieldType      string `json:"fieldType"`
-		InternalName   string `json:"internalName"`
-		MinValue       *int   `json:"minValue"`
-		MaxValue       *int   `json:"maxValue"`
-		OrganizationID string `json:"organizationId"`
+		ID             string    `json:"id"`
+		DisplayName    string    `json:"displayName"`
+		FieldType      string    `json:"fieldType"`
+		InternalName   string    `json:"internalName"`
+		MinValue       *int      `json:"minValue"`
+		MaxValue       *int      `json:"maxValue"`
+		OrganizationID string    `json:"organizationId"`
+		CreatedAt      time.Time `json:"createdAt"`
+		UpdatedAt      time.Time `json:"updatedAt"`
 	} `json:"componentVulnCustomFieldDefinition"`
 }
 
@@ -128,6 +140,12 @@ type ComponentVulnsResult struct {
 	TotalCount     int
 	HasNextPage    bool
 	EndCursor      string
+}
+
+// ListComponentVulnCustomFieldDefinitionsInput contains parameters for listing custom field definitions.
+type ListComponentVulnCustomFieldDefinitionsInput struct {
+	First int
+	After string
 }
 
 // ListVersionVulnsInput contains parameters for listing version vulnerabilities
@@ -302,6 +320,66 @@ func (c *Client) ListVersionVulns(ctx context.Context, input ListVersionVulnsInp
 		TotalCount:     result.Sbom.Vulns.TotalCount,
 		HasNextPage:    result.Sbom.Vulns.PageInfo.HasNextPage,
 		EndCursor:      result.Sbom.Vulns.PageInfo.EndCursor,
+	}, nil
+}
+
+// ListComponentVulnCustomFieldDefinitions fetches custom field definitions for component vulnerabilities.
+func (c *Client) ListComponentVulnCustomFieldDefinitions(ctx context.Context, input ListComponentVulnCustomFieldDefinitionsInput) (*ComponentVulnCustomFieldDefinitionsResult, error) {
+	vars := make(map[string]interface{})
+	if input.First > 0 {
+		vars["first"] = input.First
+	} else {
+		vars["first"] = 50
+	}
+	if input.After != "" {
+		vars["after"] = input.After
+	}
+
+	var result struct {
+		ComponentVulnCustomFieldDefinitions struct {
+			Nodes []struct {
+				ID             string    `json:"id"`
+				DisplayName    string    `json:"displayName"`
+				FieldType      string    `json:"fieldType"`
+				InternalName   string    `json:"internalName"`
+				MinValue       *int      `json:"minValue"`
+				MaxValue       *int      `json:"maxValue"`
+				OrganizationID string    `json:"organizationId"`
+				CreatedAt      time.Time `json:"createdAt"`
+				UpdatedAt      time.Time `json:"updatedAt"`
+			} `json:"nodes"`
+			TotalCount int `json:"totalCount"`
+			PageInfo   struct {
+				HasNextPage bool   `json:"hasNextPage"`
+				EndCursor   string `json:"endCursor"`
+			} `json:"pageInfo"`
+		} `json:"componentVulnCustomFieldDefinitions"`
+	}
+
+	if err := c.gql.Execute(ctx, graphql.ComponentVulnCustomFieldDefinitionsQuery, vars, &result); err != nil {
+		return nil, err
+	}
+
+	definitions := make([]ComponentVulnCustomFieldDefinition, len(result.ComponentVulnCustomFieldDefinitions.Nodes))
+	for i, node := range result.ComponentVulnCustomFieldDefinitions.Nodes {
+		definitions[i] = ComponentVulnCustomFieldDefinition{
+			ID:             node.ID,
+			DisplayName:    node.DisplayName,
+			FieldType:      node.FieldType,
+			InternalName:   node.InternalName,
+			MinValue:       node.MinValue,
+			MaxValue:       node.MaxValue,
+			OrganizationID: node.OrganizationID,
+			CreatedAt:      node.CreatedAt,
+			UpdatedAt:      node.UpdatedAt,
+		}
+	}
+
+	return &ComponentVulnCustomFieldDefinitionsResult{
+		Definitions: definitions,
+		TotalCount:  result.ComponentVulnCustomFieldDefinitions.TotalCount,
+		HasNextPage: result.ComponentVulnCustomFieldDefinitions.PageInfo.HasNextPage,
+		EndCursor:   result.ComponentVulnCustomFieldDefinitions.PageInfo.EndCursor,
 	}, nil
 }
 
@@ -604,6 +682,8 @@ func mapComponentVulnCustomFields(fields []graphQLComponentVulnCustomField) []Co
 				MinValue:       field.ComponentVulnCustomFieldDefinition.MinValue,
 				MaxValue:       field.ComponentVulnCustomFieldDefinition.MaxValue,
 				OrganizationID: field.ComponentVulnCustomFieldDefinition.OrganizationID,
+				CreatedAt:      field.ComponentVulnCustomFieldDefinition.CreatedAt,
+				UpdatedAt:      field.ComponentVulnCustomFieldDefinition.UpdatedAt,
 			}
 		}
 	}

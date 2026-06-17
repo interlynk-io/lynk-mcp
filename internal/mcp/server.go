@@ -40,6 +40,7 @@ type lynkClient interface {
 	UpdateComponentSupplier(ctx context.Context, input api.UpdateComponentSupplierInput) (*api.UpdateComponentSupplierResult, error)
 	ListVersionVulns(ctx context.Context, input api.ListVersionVulnsInput) (*api.ComponentVulnsResult, error)
 	GetVuln(ctx context.Context, id, vulnID string) (*api.Vuln, error)
+	ListComponentVulnCustomFieldDefinitions(ctx context.Context, input api.ListComponentVulnCustomFieldDefinitionsInput) (*api.ComponentVulnCustomFieldDefinitionsResult, error)
 	GetVexStatuses(ctx context.Context) ([]api.VexStatus, error)
 	GetVexJustifications(ctx context.Context) ([]api.VexJustification, error)
 	UpdateComponentVex(ctx context.Context, input api.UpdateComponentVexInput) (*api.UpdateComponentVexResult, error)
@@ -311,6 +312,12 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(mcp.NewTool("list_vex_justifications",
 		mcp.WithDescription("List VEX justifications with UUIDs for CVE triage"),
 	), s.handleListVexJustifications)
+
+	s.mcp.AddTool(mcp.NewTool("list_component_vuln_custom_field_definitions",
+		mcp.WithDescription("List component vulnerability custom field definitions with UUIDs for VEX updates"),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page")),
+	), s.handleListComponentVulnCustomFieldDefinitions)
 
 	s.mcp.AddTool(mcp.NewTool("update_component_vex",
 		mcp.WithDescription("Destructively update VEX data for a component vulnerability. Requires confirm=true. Only pass fields that should change. Status and justification may be supplied by UUID or by name."),

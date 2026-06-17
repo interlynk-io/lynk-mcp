@@ -32,6 +32,7 @@ type fakeLynkClient struct {
 	listVersionVulnsInput       api.ListVersionVulnsInput
 	listVersionVulnsInputs      []api.ListVersionVulnsInput
 	listVersionVulnsResults     map[string]*api.ComponentVulnsResult
+	listCustomFieldDefsInput    api.ListComponentVulnCustomFieldDefinitionsInput
 	listComponentVulnsInput     api.ListComponentVulnsInput
 	listVersionsInput           api.ListVersionsInput
 	searchVersionsInput         api.VersionSearchInput
@@ -39,6 +40,29 @@ type fakeLynkClient struct {
 	downloadSBOMInput           api.DownloadSBOMInput
 	bulkUpdateComponentVexInput api.BulkUpdateComponentVexInput
 	ticketingStatusInput        api.TicketingStatusInput
+}
+
+func (f *fakeLynkClient) ListComponentVulnCustomFieldDefinitions(ctx context.Context, input api.ListComponentVulnCustomFieldDefinitionsInput) (*api.ComponentVulnCustomFieldDefinitionsResult, error) {
+	f.listCustomFieldDefsInput = input
+	maxValue := 30
+	return &api.ComponentVulnCustomFieldDefinitionsResult{
+		Definitions: []api.ComponentVulnCustomFieldDefinition{
+			{
+				ID:             "field-def-1",
+				DisplayName:    "CRM age",
+				FieldType:      "RANGE",
+				InternalName:   "crm_age",
+				MinValue:       nil,
+				MaxValue:       &maxValue,
+				OrganizationID: "org-1",
+				CreatedAt:      time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC),
+				UpdatedAt:      time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		TotalCount:  2,
+		HasNextPage: true,
+		EndCursor:   "field-cursor-2",
+	}, nil
 }
 
 func (f *fakeLynkClient) ListLabels(ctx context.Context, input api.ListLabelsInput) (*api.LabelsResult, error) {
@@ -1240,6 +1264,41 @@ func TestFormatComponentVulns_IncludesCustomFieldAttributes(t *testing.T) {
 	definition := field["definition"].(map[string]interface{})
 	if definition["displayName"] != "CRM age" || definition["maxValue"] != 14 {
 		t.Fatalf("unexpected definition output: %#v", definition)
+	}
+}
+
+func TestHandleListComponentVulnCustomFieldDefinitions(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleListComponentVulnCustomFieldDefinitions(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"limit": 2,
+				"after": "field-cursor-1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListComponentVulnCustomFieldDefinitions returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListComponentVulnCustomFieldDefinitions returned tool error: %#v", result.Content)
+	}
+	if client.listCustomFieldDefsInput.First != 2 || client.listCustomFieldDefsInput.After != "field-cursor-1" {
+		t.Fatalf("input = %#v, want limit 2 after field-cursor-1", client.listCustomFieldDefsInput)
+	}
+
+	output := toolResultMap(t, result)
+	if output["totalCount"] != float64(2) || output["hasMore"] != true || output["endCursor"] != "field-cursor-2" {
+		t.Fatalf("unexpected pagination output: %#v", output)
+	}
+	definitions := output["componentVulnCustomFieldDefinitions"].([]interface{})
+	definition := definitions[0].(map[string]interface{})
+	if definition["id"] != "field-def-1" || definition["displayName"] != "CRM age" || definition["internalName"] != "crm_age" {
+		t.Fatalf("unexpected definition output: %#v", definition)
+	}
+	if definition["minValue"] != nil || definition["maxValue"] != float64(30) {
+		t.Fatalf("unexpected range output: %#v", definition)
 	}
 }
 

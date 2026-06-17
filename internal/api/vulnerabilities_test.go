@@ -208,6 +208,61 @@ func TestListVersionVulns_MapsCustomFieldAttributes(t *testing.T) {
 	}
 }
 
+func TestListComponentVulnCustomFieldDefinitions_MapsDefinitions(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"componentVulnCustomFieldDefinitions": {
+					"nodes": [
+						{
+							"id": "field-def-1",
+							"displayName": "CRM age",
+							"fieldType": "RANGE",
+							"internalName": "crm_age",
+							"minValue": 0,
+							"maxValue": 14,
+							"organizationId": "org-1",
+							"createdAt": "2026-04-17T00:00:00Z",
+							"updatedAt": "2026-04-18T00:00:00Z"
+						}
+					],
+					"totalCount": 3,
+					"pageInfo": {
+						"hasNextPage": true,
+						"endCursor": "field-cursor-2"
+					}
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	result, err := client.ListComponentVulnCustomFieldDefinitions(context.Background(), ListComponentVulnCustomFieldDefinitionsInput{
+		First: 2,
+		After: "field-cursor-1",
+	})
+	if err != nil {
+		t.Fatalf("ListComponentVulnCustomFieldDefinitions returned error: %v", err)
+	}
+
+	if gql.requests[0]["first"] != 2 || gql.requests[0]["after"] != "field-cursor-1" {
+		t.Fatalf("unexpected GraphQL variables: %#v", gql.requests[0])
+	}
+	if len(result.Definitions) != 1 {
+		t.Fatalf("len(Definitions) = %d, want 1", len(result.Definitions))
+	}
+	definition := result.Definitions[0]
+	if definition.ID != "field-def-1" || definition.DisplayName != "CRM age" || definition.InternalName != "crm_age" {
+		t.Fatalf("unexpected definition: %#v", definition)
+	}
+	if definition.MinValue == nil || *definition.MinValue != 0 || definition.MaxValue == nil || *definition.MaxValue != 14 {
+		t.Fatalf("unexpected range values: min=%#v max=%#v", definition.MinValue, definition.MaxValue)
+	}
+	if result.TotalCount != 3 || !result.HasNextPage || result.EndCursor != "field-cursor-2" {
+		t.Fatalf("unexpected pagination: %#v", result)
+	}
+}
+
 func TestListComponentVulns_PassesComponentIDs(t *testing.T) {
 	gql := &fakeGraphQLExecutor{
 		pages: []string{
