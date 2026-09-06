@@ -21,7 +21,7 @@ concurrency:
 jobs:
   ci-tests:
     name: Run CI Tests
-    uses: ./.github/workflows/ci.yml
+    uses: $/.github/workflows/ci.yml
     permissions:
       contents: read
       packages: read
@@ -98,16 +98,22 @@ jobs:
           GPG_SIGNING_KEY: ${{ steps.import_gpg.outputs.fingerprint }}
 
       - name: Generate SBOM
+        env:
+          TOOL_NAME: ${{ env.TOOL_NAME }}
+          LATEST_TAG: ${{ env.LATEST_TAG }}
+          SUPPLIER_NAME: ${{ env.SUPPLIER_NAME }}
+          SUPPLIER_URL: ${{ env.SUPPLIER_URL }}
+          MS_SBOM_TOOL_EXCLUDE_DIRS: ${{ env.MS_SBOM_TOOL_EXCLUDE_DIRS }}
         run: |
           mkdir -p sbom-output
           /tmp/sbom-tool generate \
             -b sbom-output \
             -bc . \
-            -pn "${{ env.TOOL_NAME }}" \
-            -pv "${{ env.LATEST_TAG }}" \
-            -ps "${{ env.SUPPLIER_NAME }}" \
-            -nsb "${{ env.SUPPLIER_URL }}" \
-            -cd "--DirectoryExclusionList ${{ env.MS_SBOM_TOOL_EXCLUDE_DIRS }}"
+            -pn "${TOOL_NAME}" \
+            -pv "${LATEST_TAG}" \
+            -ps "${SUPPLIER_NAME}" \
+            -nsb "${SUPPLIER_URL}" \
+            -cd "--DirectoryExclusionList ${MS_SBOM_TOOL_EXCLUDE_DIRS}"
 
       - name: Upload SBOM as Release Asset
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
