@@ -139,16 +139,19 @@ func (s *Server) registerTools() {
 	), s.handleListEnvironments)
 
 	s.mcp.AddTool(mcp.NewTool("get_environment",
-		mcp.WithDescription("Get details of a specific environment"),
+		mcp.WithDescription("Get details of a specific environment, including its latest version with component and vulnerability stats"),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the environment")),
 	), s.handleGetEnvironment)
 
 	// Version tools
 	s.mcp.AddTool(mcp.NewTool("list_versions",
-		mcp.WithDescription("List versions in an environment"),
+		mcp.WithDescription("List versions in an environment, newest first by default. Use limit=1 to get the latest version with its stats. Page through long histories with after/endCursor instead of a large limit."),
 		mcp.WithString("environment_id", mcp.Required(), mcp.Description("The UUID of the environment")),
 		mcp.WithString("lifecycle", mcp.Description("Filter by lifecycle stage (e.g., released, development)")),
-		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 20)")),
+		mcp.WithString("sort_by", mcp.Description("Sort field: created_at (default), updated_at, or version")),
+		mcp.WithString("sort_order", mcp.Description("Sort direction: desc (default) or asc")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 20, max: 100)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page. Pass endCursor from the previous call and keep sort_by and sort_order the same.")),
 	), s.handleListVersions)
 
 	s.mcp.AddTool(mcp.NewTool("get_version",
