@@ -244,6 +244,21 @@ func (s *Server) handleGetEnvironment(ctx context.Context, request mcp.CallToolR
 		result["product"] = product
 	}
 
+	if environment.VersionsCount > 0 {
+		latest, err := s.client.ListVersions(ctx, api.ListVersionsInput{
+			EnvironmentID: id,
+			First:         1,
+			OrderByField:  "SBOMS_CREATED_AT",
+			OrderByDir:    "DESC",
+		})
+		if err != nil {
+			return newToolResultError(fmt.Sprintf("Failed to get latest version: %v", err)), nil
+		}
+		if len(latest.Versions) > 0 {
+			result["latestVersion"] = formatVersionSummary(&latest.Versions[0])
+		}
+	}
+
 	return formatResult(result)
 }
 
@@ -254,9 +269,17 @@ func (s *Server) handleListVersions(ctx context.Context, request mcp.CallToolReq
 		return newToolResultError("Missing required parameter: environment_id"), nil
 	}
 
+	orderByField, orderByDir, err := versionOrderBy(stringParam(args, "sort_by"), stringParam(args, "sort_order"))
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+
 	input := api.ListVersionsInput{
 		EnvironmentID: environmentID,
-		First:         getIntParam(args, "limit", 20),
+		First:         min(getIntParam(args, "limit", 20), maxVersionsPageSize),
+		After:         stringParam(args, "after"),
+		OrderByField:  orderByField,
+		OrderByDir:    orderByDir,
 	}
 	if lifecycle, ok := args["lifecycle"].(string); ok && lifecycle != "" {
 		input.Lifecycle = []string{lifecycle}
@@ -276,7 +299,42 @@ func (s *Server) handleListVersions(ctx context.Context, request mcp.CallToolReq
 		"versions":   versions,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
 	})
+}
+
+// maxListPageSize bounds pages for component, policy, violation, and license lists.
+const maxListPageSize = 100
+
+// maxVersionsPageSize caps list_versions pages. Each version carries component
+// and vulnerability stats, and the API times out on very large pages.
+const maxVersionsPageSize = 100
+
+var versionSortFields = map[string]string{
+	"created_at": "SBOMS_CREATED_AT",
+	"updated_at": "SBOMS_UPDATED_AT",
+	"version":    "SBOMS_PROJECT_VERSION",
+}
+
+// versionOrderBy maps list_versions sort parameters to the API order-by input.
+// The API returns versions in no guaranteed order when none is given, so this
+// defaults to newest first.
+func versionOrderBy(sortBy, sortOrder string) (string, string, error) {
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	field, ok := versionSortFields[strings.ToLower(sortBy)]
+	if !ok {
+		return "", "", fmt.Errorf("Invalid sort_by %q: use created_at, updated_at, or version", sortBy)
+	}
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+	dir := strings.ToUpper(sortOrder)
+	if dir != "ASC" && dir != "DESC" {
+		return "", "", fmt.Errorf("Invalid sort_order %q: use asc or desc", sortOrder)
+	}
+	return field, dir, nil
 }
 
 func (s *Server) handleGetVersion(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -661,7 +719,8 @@ func (s *Server) handleListComponents(ctx context.Context, request mcp.CallToolR
 
 	input := api.ListComponentsInput{
 		VersionID: versionID,
-		First:     getIntParam(args, "limit", 50),
+		First:     min(getIntParam(args, "limit", 50), maxListPageSize),
+		After:     stringParam(args, "after"),
 	}
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
@@ -696,6 +755,7 @@ func (s *Server) handleListComponents(ctx context.Context, request mcp.CallToolR
 		"components": components,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
 	})
 }
 
@@ -1636,7 +1696,8 @@ func (s *Server) handleSecurityIncidentMutation(
 func (s *Server) handleListPolicies(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	input := api.ListPoliciesInput{
-		First: getIntParam(args, "limit", 20),
+		First: min(getIntParam(args, "limit", 20), maxListPageSize),
+		After: stringParam(args, "after"),
 	}
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
@@ -1664,6 +1725,7 @@ func (s *Server) handleListPolicies(ctx context.Context, request mcp.CallToolReq
 		"policies":   policies,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
 	})
 }
 
@@ -1705,7 +1767,8 @@ func (s *Server) handleGetPolicy(ctx context.Context, request mcp.CallToolReques
 func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	input := api.ListPolicyResultsInput{
-		First: getIntParam(args, "limit", 50),
+		First: min(getIntParam(args, "limit", 50), maxListPageSize),
+		After: stringParam(args, "after"),
 	}
 	if policyID, ok := args["policy_id"].(string); ok {
 		input.PolicyID = policyID
@@ -1748,6 +1811,7 @@ func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.Cal
 		"policyResults": violations,
 		"totalCount":    result.TotalCount,
 		"hasMore":       result.HasNextPage,
+		"endCursor":     result.EndCursor,
 	})
 }
 
@@ -1785,7 +1849,8 @@ func (s *Server) handleGetTicketingStatus(ctx context.Context, request mcp.CallT
 func (s *Server) handleListLicenses(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	input := api.ListLicensesInput{
-		First: getIntParam(args, "limit", 50),
+		First: min(getIntParam(args, "limit", 50), maxListPageSize),
+		After: stringParam(args, "after"),
 	}
 	if status, ok := args["status"].(string); ok {
 		input.Status = status
@@ -1819,6 +1884,7 @@ func (s *Server) handleListLicenses(ctx context.Context, request mcp.CallToolReq
 		"licenses":   licenses,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
 	})
 }
 

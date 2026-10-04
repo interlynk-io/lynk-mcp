@@ -335,7 +335,7 @@ Add to `~/.config/zed/settings.json`:
 | `list_products` | List all products in the organization |
 | `get_product` | Get details of a specific product including its environments |
 | `list_environments` | List environments within a product |
-| `get_environment` | Get details of a specific environment |
+| `get_environment` | Get details of a specific environment, including its latest version with stats |
 
 `list_products` supports cursor pagination with `limit` and `after`. Responses include `hasMore` and `endCursor`; pass `endCursor` as `after` to fetch the next page.
 
@@ -345,7 +345,7 @@ Product responses include lightweight repository import metadata when available.
 
 | Tool | Description |
 |------|-------------|
-| `list_versions` | List versions in an environment |
+| `list_versions` | List versions in an environment, newest first, with `sort_by`, `sort_order`, and `after` cursor pagination |
 | `get_version` | Get version details with statistics |
 | `find_version` | Find versions by exact version string with optional product/environment disambiguation |
 | `download_sbom` | Download SBOM content with configurable format, vulnerabilities, files, lite/original, support status, and latest-version lookup |
@@ -358,6 +358,8 @@ Product responses include lightweight repository import metadata when available.
 | Tool | Description |
 |------|-------------|
 | `list_doctor_results` | List SBOM Doctor findings for a version |
+
+The `list_components`, `list_policies`, `list_policy_violations`, and `list_licenses` tools support cursor pagination. Set `limit` (maximum 100), then pass the returned `endCursor` as `after` while `hasMore` is true. Keep filters unchanged between pages. Defaults remain 20 for policies and 50 for the other three tools.
 
 ### Components
 

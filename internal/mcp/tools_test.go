@@ -1316,3 +1316,108 @@ func TestFilterComponentVulnsByCvss_AppliesThresholds(t *testing.T) {
 		t.Fatalf("filtered = %#v, want only high", filtered)
 	}
 }
+
+func TestHandleListVersions_DefaultsToNewestFirst(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleListVersions(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"environment_id": "env-1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListVersions returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListVersions returned tool error: %#v", result.Content)
+	}
+	input := client.listVersionsInput
+	if input.OrderByField != "SBOMS_CREATED_AT" || input.OrderByDir != "DESC" {
+		t.Fatalf("expected created-at descending order by default: %#v", input)
+	}
+	if input.First != 20 || input.After != "" {
+		t.Fatalf("unexpected default paging: %#v", input)
+	}
+	output := toolResultMap(t, result)
+	if _, ok := output["endCursor"]; !ok {
+		t.Fatalf("expected endCursor in output: %#v", output)
+	}
+}
+
+func TestHandleListVersions_PassesSortAndCursor(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleListVersions(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"environment_id": "env-1",
+				"sort_by":        "version",
+				"sort_order":     "asc",
+				"after":          "cursor-1",
+				"limit":          500,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleListVersions returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleListVersions returned tool error: %#v", result.Content)
+	}
+	input := client.listVersionsInput
+	if input.OrderByField != "SBOMS_PROJECT_VERSION" || input.OrderByDir != "ASC" {
+		t.Fatalf("unexpected order: %#v", input)
+	}
+	if input.After != "cursor-1" {
+		t.Fatalf("after = %q, want cursor-1", input.After)
+	}
+	if input.First != maxVersionsPageSize {
+		t.Fatalf("first = %d, want limit capped at %d", input.First, maxVersionsPageSize)
+	}
+}
+
+func TestHandleListVersions_RejectsInvalidSort(t *testing.T) {
+	for _, args := range []map[string]interface{}{
+		{"environment_id": "env-1", "sort_by": "name"},
+		{"environment_id": "env-1", "sort_order": "newest"},
+	} {
+		server := &Server{client: &fakeLynkClient{}}
+		result, err := server.handleListVersions(context.Background(), mcpg.CallToolRequest{
+			Params: mcpg.CallToolParams{Arguments: args},
+		})
+		if err != nil {
+			t.Fatalf("handleListVersions returned error: %v", err)
+		}
+		if !result.IsError {
+			t.Fatalf("expected tool error for %#v", args)
+		}
+	}
+}
+
+func TestHandleGetEnvironment_IncludesLatestVersion(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleGetEnvironment(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"id": "env-1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleGetEnvironment returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleGetEnvironment returned tool error: %#v", result.Content)
+	}
+	input := client.listVersionsInput
+	if input.EnvironmentID != "env-1" || input.First != 1 || input.OrderByField != "SBOMS_CREATED_AT" || input.OrderByDir != "DESC" {
+		t.Fatalf("unexpected latest version lookup: %#v", input)
+	}
+	output := toolResultMap(t, result)
+	if _, ok := output["latestVersion"].(map[string]interface{}); !ok {
+		t.Fatalf("expected latestVersion in output: %#v", output)
+	}
+}
