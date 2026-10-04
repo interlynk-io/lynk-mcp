@@ -223,7 +223,8 @@ func (s *Server) registerTools() {
 		mcp.WithString("search", mcp.Description("Search term to filter components")),
 		mcp.WithString("kind", mcp.Description("Filter by component kind (e.g., library, application)")),
 		mcp.WithBoolean("direct", mcp.Description("Filter to direct dependencies only")),
-		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50, max: 100)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page. Pass endCursor from the previous call and keep filters the same.")),
 	), s.handleListComponents)
 
 	s.mcp.AddTool(mcp.NewTool("get_component",
@@ -522,7 +523,8 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(mcp.NewTool("list_policies",
 		mcp.WithDescription("List security policies in the organization"),
 		mcp.WithString("search", mcp.Description("Search term to filter policies")),
-		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 20)")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 20, max: 100)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page. Pass endCursor from the previous call and keep filters the same.")),
 	), s.handleListPolicies)
 
 	s.mcp.AddTool(mcp.NewTool("get_policy",
@@ -535,7 +537,8 @@ func (s *Server) registerTools() {
 		mcp.WithString("policy_id", mcp.Description("Filter by policy UUID")),
 		mcp.WithString("version_id", mcp.Description("Filter by version UUID")),
 		mcp.WithString("result_type", mcp.Description("Filter by result type (pass, fail, warn)")),
-		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50, max: 100)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page. Pass endCursor from the previous call and keep filters the same.")),
 	), s.handleListPolicyViolations)
 
 	s.mcp.AddTool(mcp.NewTool("get_ticketing_status",
@@ -555,7 +558,8 @@ func (s *Server) registerTools() {
 		mcp.WithDescription("List licenses used in the organization's versions"),
 		mcp.WithString("status", mcp.Description("Filter by license status (approved, rejected, unspecified)")),
 		mcp.WithString("search", mcp.Description("Search term to filter licenses")),
-		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50)")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 50, max: 100)")),
+		mcp.WithString("after", mcp.Description("Cursor for the next page. Pass endCursor from the previous call and keep filters the same.")),
 	), s.handleListLicenses)
 }
 

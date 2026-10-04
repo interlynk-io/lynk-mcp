@@ -303,6 +303,9 @@ func (s *Server) handleListVersions(ctx context.Context, request mcp.CallToolReq
 	})
 }
 
+// maxListPageSize bounds pages for component, policy, violation, and license lists.
+const maxListPageSize = 100
+
 // maxVersionsPageSize caps list_versions pages. Each version carries component
 // and vulnerability stats, and the API times out on very large pages.
 const maxVersionsPageSize = 100
@@ -716,7 +719,8 @@ func (s *Server) handleListComponents(ctx context.Context, request mcp.CallToolR
 
 	input := api.ListComponentsInput{
 		VersionID: versionID,
-		First:     getIntParam(args, "limit", 50),
+		First:     min(getIntParam(args, "limit", 50), maxListPageSize),
+		After:     stringParam(args, "after"),
 	}
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
@@ -751,6 +755,7 @@ func (s *Server) handleListComponents(ctx context.Context, request mcp.CallToolR
 		"components": components,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
 	})
 }
 
@@ -1691,7 +1696,8 @@ func (s *Server) handleSecurityIncidentMutation(
 func (s *Server) handleListPolicies(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	input := api.ListPoliciesInput{
-		First: getIntParam(args, "limit", 20),
+		First: min(getIntParam(args, "limit", 20), maxListPageSize),
+		After: stringParam(args, "after"),
 	}
 	if search, ok := args["search"].(string); ok {
 		input.Search = search
@@ -1719,6 +1725,7 @@ func (s *Server) handleListPolicies(ctx context.Context, request mcp.CallToolReq
 		"policies":   policies,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
 	})
 }
 
@@ -1760,7 +1767,8 @@ func (s *Server) handleGetPolicy(ctx context.Context, request mcp.CallToolReques
 func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	input := api.ListPolicyResultsInput{
-		First: getIntParam(args, "limit", 50),
+		First: min(getIntParam(args, "limit", 50), maxListPageSize),
+		After: stringParam(args, "after"),
 	}
 	if policyID, ok := args["policy_id"].(string); ok {
 		input.PolicyID = policyID
@@ -1803,6 +1811,7 @@ func (s *Server) handleListPolicyViolations(ctx context.Context, request mcp.Cal
 		"policyResults": violations,
 		"totalCount":    result.TotalCount,
 		"hasMore":       result.HasNextPage,
+		"endCursor":     result.EndCursor,
 	})
 }
 
@@ -1840,7 +1849,8 @@ func (s *Server) handleGetTicketingStatus(ctx context.Context, request mcp.CallT
 func (s *Server) handleListLicenses(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	input := api.ListLicensesInput{
-		First: getIntParam(args, "limit", 50),
+		First: min(getIntParam(args, "limit", 50), maxListPageSize),
+		After: stringParam(args, "after"),
 	}
 	if status, ok := args["status"].(string); ok {
 		input.Status = status
@@ -1874,6 +1884,7 @@ func (s *Server) handleListLicenses(ctx context.Context, request mcp.CallToolReq
 		"licenses":   licenses,
 		"totalCount": result.TotalCount,
 		"hasMore":    result.HasNextPage,
+		"endCursor":  result.EndCursor,
 	})
 }
 

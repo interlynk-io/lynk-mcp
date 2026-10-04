@@ -359,6 +359,8 @@ Product responses include lightweight repository import metadata when available.
 |------|-------------|
 | `list_doctor_results` | List SBOM Doctor findings for a version |
 
+The `list_components`, `list_policies`, `list_policy_violations`, and `list_licenses` tools support cursor pagination. Set `limit` (maximum 100), then pass the returned `endCursor` as `after` while `hasMore` is true. Keep filters unchanged between pages. Defaults remain 20 for policies and 50 for the other three tools.
+
 ### Components
 
 | Tool | Description |
