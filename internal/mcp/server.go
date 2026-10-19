@@ -30,6 +30,7 @@ type lynkClient interface {
 	GetProduct(ctx context.Context, id string) (*api.Product, error)
 	ListVersions(ctx context.Context, input api.ListVersionsInput) (*api.VersionsResult, error)
 	GetVersion(ctx context.Context, id string) (*api.Version, error)
+	GetVersionRelations(ctx context.Context, id string, deep bool) (*api.VersionRelations, error)
 	SearchVersions(ctx context.Context, input api.VersionSearchInput) (*api.VersionsResult, error)
 	DownloadSBOM(ctx context.Context, input api.DownloadSBOMInput) (*api.DownloadSBOMResult, error)
 	ListDoctorResults(ctx context.Context, input api.ListDoctorResultsInput) (*api.DoctorResultsResult, error)
@@ -160,6 +161,12 @@ func (s *Server) registerTools() {
 		mcp.WithBoolean("include_component_vuln_summary", mcp.Description("Include per-component vulnerability summary from component stats")),
 		mcp.WithNumber("component_summary_limit", mcp.Description("Maximum number of component summaries to return when included (default: 100)")),
 	), s.handleGetVersion)
+
+	s.mcp.AddTool(mcp.NewTool("get_version_relations",
+		mcp.WithDescription("List the parent and child versions of a version. A parent is a version that includes this one as a part; a child is a part of this version. Use it to find the right current_version_id for a parent-level VEX update with update_component_vex or bulk_update_component_vex, and to see which child versions roll up into a parent's vulnerability counts."),
+		mcp.WithString("version_id", mcp.Required(), mcp.Description("The UUID of the version")),
+		mcp.WithBoolean("deep", mcp.Description("Return all descendants as children instead of only direct children (default: false). Parents always include all ancestors.")),
+	), s.handleGetVersionRelations)
 
 	s.mcp.AddTool(mcp.NewTool("find_version",
 		mcp.WithDescription("Find versions by exact version string with optional product and environment name disambiguation"),
@@ -324,9 +331,9 @@ func (s *Server) registerTools() {
 	), s.handleListComponentVulnCustomFieldDefinitions)
 
 	s.mcp.AddTool(mcp.NewTool("update_component_vex",
-		mcp.WithDescription("Destructively update VEX data for a component vulnerability. Requires confirm=true. Only pass fields that should change. Status and justification may be supplied by UUID or by name."),
+		mcp.WithDescription("Destructively update VEX data for a component vulnerability. Requires confirm=true. Only pass fields that should change. Status and justification may be supplied by UUID or by name. A direct write changes the vulnerability's own status; it applies when current_version_id is the version that owns the vulnerability. A parent write sets the status as seen from a parent version only and leaves the owner's status unchanged; it applies when current_version_id is an ancestor of the owner (a version that includes the owner as a part). The tool works out which applies and reports dispositionScope (direct or parent); on a parent write, id stays the requested vulnerability id and dispositionId is the parent-level record id. A version that cannot see the vulnerability is refused with no change; this also happens for a retracted vulnerability that has no VEX status yet. Use get_version_relations to find parent and child versions."),
 		mcp.WithString("component_vuln_id", mcp.Required(), mcp.Description("The UUID of the component vulnerability to update")),
-		mcp.WithString("current_version_id", mcp.Required(), mcp.Description("The UUID of the current version/SBOM context")),
+		mcp.WithString("current_version_id", mcp.Required(), mcp.Description("The UUID of the version to apply the status in. Use the owning version for a direct write, or a parent (ancestor) version for a parent write")),
 		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to perform this destructive update")),
 		mcp.WithString("vex_status_id", mcp.Description("VEX status UUID")),
 		mcp.WithString("vex_status", mcp.Description("VEX status name (e.g., affected, not_affected, fixed); resolved to UUID automatically")),
@@ -352,10 +359,10 @@ func (s *Server) registerTools() {
 	), s.handleUpdateComponentVex)
 
 	s.mcp.AddTool(mcp.NewTool("bulk_update_component_vex",
-		mcp.WithDescription("Destructively update VEX data for multiple component vulnerabilities with one shared update payload. Requires confirm=true. Status and justification may be supplied by UUID or by name."),
+		mcp.WithDescription("Destructively update VEX data for multiple component vulnerabilities with one shared update payload. Requires confirm=true. Status and justification may be supplied by UUID or by name. With current_version_id, each vulnerability is handled on its own: a direct write changes its own status when current_version_id is the version that owns it, and a parent write sets the status as seen from a parent (ancestor) version only and leaves the owner's status unchanged. Each updated item reports dispositionScope (direct or parent). For a parent write the API returns the owner's record, so that item omits the owner's status and other fields; read the parent-level status with list_vulnerabilities on the parent version. A vulnerability that current_version_id cannot see (wrong ID, retracted with no VEX status yet, or an unrelated version) is left out and reported as failed; the rest are still sent, and they are applied as one batch, so an API error applies to all of them. Without current_version_id every item is a direct write. Use get_version_relations to find parent and child versions."),
 		mcp.WithArray("component_vuln_ids", mcp.Required(), mcp.Description("Component vulnerability UUIDs to update"), mcp.WithStringItems()),
 		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to perform this destructive update")),
-		mcp.WithString("current_version_id", mcp.Description("Optional current version/SBOM context UUID")),
+		mcp.WithString("current_version_id", mcp.Description("Optional UUID of the version to apply the status in. Use the owning version for direct writes, or a parent (ancestor) version for parent writes. Omit for direct writes on each vulnerability's own version")),
 		mcp.WithString("vex_status_id", mcp.Description("VEX status UUID")),
 		mcp.WithString("vex_status", mcp.Description("VEX status name (e.g., affected, not_affected, fixed); resolved to UUID automatically")),
 		mcp.WithString("vex_justification_id", mcp.Description("VEX justification UUID")),

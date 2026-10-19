@@ -387,6 +387,66 @@ const (
 		}
 	`
 
+	// SbomRelationsQuery fetches the parents and children of an SBOM. Parents are all
+	// ancestors (connectedSboms). Children are direct parts, or all descendants when $deep is true.
+	SbomRelationsQuery = `
+		query GetSbomRelations($sbomId: Uuid!, $deep: Boolean!) {
+			sbom(sbomId: $sbomId) {
+				id
+				parents: connectedSboms {
+					id
+					projectVersion
+					project {
+						id
+						name
+						projectGroup {
+							id
+							name
+						}
+					}
+				}
+				directChildren: sbomParts @skip(if: $deep) {
+					part {
+						id
+						projectVersion
+						project {
+							id
+							name
+							projectGroup {
+								id
+								name
+							}
+						}
+					}
+				}
+				descendants: deepParts @include(if: $deep) {
+					id
+					projectVersion
+					project {
+						id
+						name
+						projectGroup {
+							id
+							name
+						}
+					}
+				}
+			}
+		}
+	`
+
+	// SbomsCompVulnQuery returns the component vulnerabilities visible from an SBOM,
+	// including those from its parts, for the given component vulnerability IDs.
+	SbomsCompVulnQuery = `
+		query GetSbomsCompVuln($sbomIds: [Uuid!]!, $componentVulnIds: [Uuid!]!) {
+			sbomsCompVuln(sbomIds: $sbomIds, componentVulnIds: $componentVulnIds) {
+				id
+				isPart
+				sbomId
+			}
+		}
+	`
+
 	// SbomComponentsQuery fetches components for an SBOM
 	SbomComponentsQuery = `
 		query GetSbomComponents($sbomId: Uuid!, $first: Int, $after: String, $search: String, $kind: [String!], $direct: Boolean) {

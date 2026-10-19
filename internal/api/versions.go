@@ -421,6 +421,85 @@ func (c *Client) GetVersion(ctx context.Context, id string) (*Version, error) {
 	}, nil
 }
 
+// VersionRelation identifies a version linked to another version as a parent or child.
+type VersionRelation struct {
+	VersionID       string
+	Version         string
+	EnvironmentID   string
+	EnvironmentName string
+	ProductID       string
+	ProductName     string
+}
+
+// VersionRelations lists the parents and children of a version.
+type VersionRelations struct {
+	Parents  []VersionRelation
+	Children []VersionRelation
+}
+
+type relatedSbom struct {
+	ID             string `json:"id"`
+	ProjectVersion string `json:"projectVersion"`
+	Project        struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		ProjectGroup struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"projectGroup"`
+	} `json:"project"`
+}
+
+func (r relatedSbom) toRelation() VersionRelation {
+	return VersionRelation{
+		VersionID:       r.ID,
+		Version:         r.ProjectVersion,
+		EnvironmentID:   r.Project.ID,
+		EnvironmentName: r.Project.Name,
+		ProductID:       r.Project.ProjectGroup.ID,
+		ProductName:     r.Project.ProjectGroup.Name,
+	}
+}
+
+// GetVersionRelations returns a version's parents (all ancestors) and children
+// (direct children, or all descendants when deep is true).
+func (c *Client) GetVersionRelations(ctx context.Context, id string, deep bool) (*VersionRelations, error) {
+	vars := map[string]interface{}{
+		"sbomId": id,
+		"deep":   deep,
+	}
+
+	var result struct {
+		Sbom struct {
+			Parents        []relatedSbom `json:"parents"`
+			DirectChildren []struct {
+				Part relatedSbom `json:"part"`
+			} `json:"directChildren"`
+			Descendants []relatedSbom `json:"descendants"`
+		} `json:"sbom"`
+	}
+
+	if err := c.gql.Execute(ctx, graphql.SbomRelationsQuery, vars, &result); err != nil {
+		return nil, err
+	}
+
+	relations := &VersionRelations{
+		Parents:  make([]VersionRelation, 0, len(result.Sbom.Parents)),
+		Children: []VersionRelation{},
+	}
+	for _, parent := range result.Sbom.Parents {
+		relations.Parents = append(relations.Parents, parent.toRelation())
+	}
+	for _, child := range result.Sbom.DirectChildren {
+		relations.Children = append(relations.Children, child.Part.toRelation())
+	}
+	for _, descendant := range result.Sbom.Descendants {
+		relations.Children = append(relations.Children, descendant.toRelation())
+	}
+
+	return relations, nil
+}
+
 // DownloadSBOM fetches SBOM download readiness, metadata, and content.
 func (c *Client) DownloadSBOM(ctx context.Context, input DownloadSBOMInput) (*DownloadSBOMResult, error) {
 	vars := map[string]interface{}{
