@@ -822,7 +822,7 @@ func (s *Server) handleUpdateComponent(ctx context.Context, request mcp.CallTool
 	if !ok || versionID == "" {
 		return newToolResultError("Missing required parameter: version_id"), nil
 	}
-	if !hasAnyParam(args, "kind", "name", "description", "copyright", "version", "group", "licenses", "licenses_exp", "cpes", "purl", "primary", "internal", "generate_unique_id", "scope", "support_level", "end_of_support", "notice", "checksums", "external_urls") {
+	if !hasAnyParam(args, "kind", "name", "description", "copyright", "version", "group", "licenses", "licenses_exp", "cpes", "purl", "primary", "internal", "generate_unique_id", "scope", "notice", "checksums", "external_urls") {
 		return newToolResultError("No update fields provided"), nil
 	}
 
@@ -841,8 +841,6 @@ func (s *Server) handleUpdateComponent(ctx context.Context, request mcp.CallTool
 		Internal:         getBoolPtrParam(args, "internal"),
 		GenerateUniqueID: getBoolPtrParam(args, "generate_unique_id"),
 		Scope:            getStringPtrParam(args, "scope"),
-		SupportLevel:     getStringPtrParam(args, "support_level"),
-		EndOfSupport:     getStringPtrParam(args, "end_of_support"),
 		Notice:           getStringPtrParam(args, "notice"),
 	}
 
@@ -914,6 +912,85 @@ func (s *Server) handleUpdateComponentSupplier(ctx context.Context, request mcp.
 		"contactName":  result.Supplier.ContactName,
 		"contactEmail": result.Supplier.ContactEmail,
 	})
+}
+
+func formatComponentSupportLevel(level *api.ComponentSupportLevel) map[string]interface{} {
+	return map[string]interface{}{
+		"id":                      level.ID,
+		"componentId":             level.ComponentID,
+		"level":                   level.Level,
+		"endDate":                 level.EndDate,
+		"notes":                   level.Notes,
+		"retainManualOverrideFor": level.RetainManualOverrideFor,
+		"supplierDescription":     level.SupplierDescription,
+	}
+}
+
+func (s *Server) handleCreateComponentSupportLevel(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for create_component_support_level"), nil
+	}
+
+	componentID, ok := args["component_id"].(string)
+	if !ok || componentID == "" {
+		return newToolResultError("Missing required parameter: component_id"), nil
+	}
+
+	result, err := s.client.CreateComponentSupportLevel(ctx, api.CreateComponentSupportLevelInput{
+		ComponentID:             componentID,
+		Level:                   getStringPtrParam(args, "level"),
+		EndDate:                 getStringPtrParam(args, "end_date"),
+		Notes:                   getStringPtrParam(args, "notes"),
+		RetainManualOverrideFor: getIntPtrParam(args, "retain_manual_override_for"),
+		SupplierDescription:     getStringPtrParam(args, "supplier_description"),
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to create component support level: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to create component support level: %s", strings.Join(result.Errors, "; "))), nil
+	}
+	if result.SupportLevel == nil {
+		return newToolResultError("Failed to create component support level: API returned no support level"), nil
+	}
+
+	return formatResult(formatComponentSupportLevel(result.SupportLevel))
+}
+
+func (s *Server) handleUpdateComponentSupportLevel(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	if !confirmed(args) {
+		return newToolResultError("Missing required confirmation: confirm must be true for update_component_support_level"), nil
+	}
+
+	id, ok := args["id"].(string)
+	if !ok || id == "" {
+		return newToolResultError("Missing required parameter: id"), nil
+	}
+	if !hasAnyParam(args, "level", "end_date", "notes", "retain_manual_override_for", "supplier_description") {
+		return newToolResultError("No update fields provided"), nil
+	}
+
+	result, err := s.client.UpdateComponentSupportLevel(ctx, api.UpdateComponentSupportLevelInput{
+		ID:                      id,
+		Level:                   getStringPtrParam(args, "level"),
+		EndDate:                 getStringPtrParam(args, "end_date"),
+		Notes:                   getStringPtrParam(args, "notes"),
+		RetainManualOverrideFor: getIntPtrParam(args, "retain_manual_override_for"),
+		SupplierDescription:     getStringPtrParam(args, "supplier_description"),
+	})
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to update component support level: %v", err)), nil
+	}
+	if len(result.Errors) > 0 {
+		return newToolResultError(fmt.Sprintf("Failed to update component support level: %s", strings.Join(result.Errors, "; "))), nil
+	}
+	if result.SupportLevel == nil {
+		return newToolResultError("Failed to update component support level: API returned no support level"), nil
+	}
+
+	return formatResult(formatComponentSupportLevel(result.SupportLevel))
 }
 
 func (s *Server) handleListVulnerabilities(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -2622,6 +2699,24 @@ func getIntParam(args map[string]interface{}, key string, defaultVal int) int {
 		}
 	}
 	return defaultVal
+}
+
+func getIntPtrParam(args map[string]interface{}, key string) *int {
+	val, ok := args[key]
+	if !ok {
+		return nil
+	}
+	switch v := val.(type) {
+	case float64:
+		i := int(v)
+		return &i
+	case int:
+		return &v
+	case int64:
+		i := int(v)
+		return &i
+	}
+	return nil
 }
 
 func getFloatPtrParam(args map[string]interface{}, key string) *float64 {

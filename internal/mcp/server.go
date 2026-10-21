@@ -38,6 +38,8 @@ type lynkClient interface {
 	GetComponent(ctx context.Context, id, versionID string) (*api.VersionComponent, error)
 	UpdateComponent(ctx context.Context, input api.UpdateComponentInput) (*api.UpdateComponentResult, error)
 	UpdateComponentSupplier(ctx context.Context, input api.UpdateComponentSupplierInput) (*api.UpdateComponentSupplierResult, error)
+	CreateComponentSupportLevel(ctx context.Context, input api.CreateComponentSupportLevelInput) (*api.ComponentSupportLevelResult, error)
+	UpdateComponentSupportLevel(ctx context.Context, input api.UpdateComponentSupportLevelInput) (*api.ComponentSupportLevelResult, error)
 	ListVersionVulns(ctx context.Context, input api.ListVersionVulnsInput) (*api.ComponentVulnsResult, error)
 	GetVuln(ctx context.Context, id, vulnID string) (*api.Vuln, error)
 	ListComponentVulnCustomFieldDefinitions(ctx context.Context, input api.ListComponentVulnCustomFieldDefinitionsInput) (*api.ComponentVulnCustomFieldDefinitionsResult, error)
@@ -254,8 +256,6 @@ func (s *Server) registerTools() {
 		mcp.WithBoolean("internal", mcp.Description("Whether this component is internal")),
 		mcp.WithBoolean("generate_unique_id", mcp.Description("Generate a new component unique ID")),
 		mcp.WithString("scope", mcp.Description("Component scope")),
-		mcp.WithString("support_level", mcp.Description("Component support level enum: UNSPECIFIED, ACTIVELY_MAINTAINED, NO_LONGER_MAINTAINED, ABANDONED, NONE")),
-		mcp.WithString("end_of_support", mcp.Description("End-of-support date or empty string")),
 		mcp.WithString("notice", mcp.Description("Component notice")),
 		mcp.WithArray("checksums", mcp.Description("Checksum objects with alg and content"), mcp.Items(map[string]interface{}{
 			"type": "object",
@@ -283,6 +283,28 @@ func (s *Server) registerTools() {
 		mcp.WithString("contact_name", mcp.Description("Supplier contact name")),
 		mcp.WithString("contact_email", mcp.Description("Supplier contact email")),
 	), s.handleUpdateComponentSupplier)
+
+	s.mcp.AddTool(mcp.NewTool("create_component_support_level",
+		mcp.WithDescription("Create the support level record for a component that has none. Requires confirm=true. Fails if the component already has one; use update_component_support_level instead. Manual entries are not overwritten by the support analysis job unless retain_manual_override_for is a positive number of days that has elapsed."),
+		mcp.WithString("component_id", mcp.Required(), mcp.Description("The UUID of the component")),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to perform this write")),
+		mcp.WithString("level", mcp.Description("Support level: unspecified, actively_maintained, actively_maintained_third_party, no_longer_maintained, abandoned")),
+		mcp.WithString("end_date", mcp.Description("End-of-support date, ISO 8601 (for example 2027-01-31T00:00:00Z). Cleared by the API for unspecified and abandoned")),
+		mcp.WithString("notes", mcp.Description("Notes")),
+		mcp.WithNumber("retain_manual_override_for", mcp.Description("Days to protect this manual entry from the support analysis job; 0 means never overwritten. Forced to 0 for no_longer_maintained")),
+		mcp.WithString("supplier_description", mcp.Description("Third-party maintainer description; only kept for actively_maintained_third_party")),
+	), s.handleCreateComponentSupportLevel)
+
+	s.mcp.AddTool(mcp.NewTool("update_component_support_level",
+		mcp.WithDescription("Destructively update a component support level record. Requires confirm=true. Only pass fields that should change. The id is the support level record id, returned by create_component_support_level."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the component support level record")),
+		mcp.WithBoolean("confirm", mcp.Required(), mcp.Description("Must be true to perform this destructive update")),
+		mcp.WithString("level", mcp.Description("Support level: unspecified, actively_maintained, actively_maintained_third_party, no_longer_maintained, abandoned")),
+		mcp.WithString("end_date", mcp.Description("End-of-support date, ISO 8601 (for example 2027-01-31T00:00:00Z). Cleared by the API for unspecified and abandoned")),
+		mcp.WithString("notes", mcp.Description("Notes")),
+		mcp.WithNumber("retain_manual_override_for", mcp.Description("Days to protect this manual entry from the support analysis job; 0 means never overwritten. Forced to 0 for no_longer_maintained")),
+		mcp.WithString("supplier_description", mcp.Description("Third-party maintainer description; only kept for actively_maintained_third_party")),
+	), s.handleUpdateComponentSupportLevel)
 
 	// Vulnerability tools
 	s.mcp.AddTool(mcp.NewTool("list_vulnerabilities",
