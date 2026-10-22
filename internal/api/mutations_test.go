@@ -16,6 +16,9 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 )
 
@@ -165,6 +168,7 @@ func TestUpdateComponentSupplier_MapsInputsAndErrors(t *testing.T) {
 func TestUpdateComponentVex_MapsInputsAndResults(t *testing.T) {
 	gql := &fakeGraphQLExecutor{
 		pages: []string{
+			`{"sbomsCompVuln": [{"id": "component-vuln-1", "isPart": false, "sbomId": "version-1"}]}`,
 			`{
 				"componentVexUpdate": {
 					"componentVuln": {
@@ -213,7 +217,7 @@ func TestUpdateComponentVex_MapsInputsAndResults(t *testing.T) {
 		t.Fatalf("UpdateComponentVex returned error: %v", err)
 	}
 
-	request := gql.requests[0]
+	request := gql.requests[1]
 	if request["componentVulnId"] != "component-vuln-1" || request["currentSbomId"] != "version-1" {
 		t.Fatalf("unexpected VEX required variables: %#v", request)
 	}
@@ -230,14 +234,123 @@ func TestUpdateComponentVex_MapsInputsAndResults(t *testing.T) {
 	if result.ComponentVuln == nil {
 		t.Fatal("expected updated component vuln")
 	}
+	if result.Scope != VexScopeDirect || result.ParentVersionID != "" || result.OwnerVersionID != "version-1" {
+		t.Fatalf("unexpected scope fields: %#v", result)
+	}
 	if result.ComponentVuln.VexStatus == nil || result.ComponentVuln.VexStatus.ID != "status-1" {
 		t.Fatalf("unexpected VEX result: %#v", result.ComponentVuln)
 	}
 }
 
+func TestUpdateComponentVex_ParentVersionWritesParentDisposition(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{"sbomsCompVuln": [{"id": "component-vuln-1", "isPart": true, "sbomId": "owner-version"}]}`,
+			`{
+				"componentVexUpdate": {
+					"componentVuln": {
+						"id": "disposition-1",
+						"componentId": "component-1",
+						"vulnId": "vuln-1",
+						"sbomId": "owner-version",
+						"vexStatus": {"id": "status-1", "name": "In Triage"}
+					},
+					"errors": []
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	statusID := "status-1"
+	result, err := client.UpdateComponentVex(context.Background(), UpdateComponentVexInput{
+		ComponentVulnID:  "component-vuln-1",
+		CurrentVersionID: "parent-version",
+		VexStatusID:      &statusID,
+	})
+	if err != nil {
+		t.Fatalf("UpdateComponentVex returned error: %v", err)
+	}
+
+	if gql.requests[0]["sbomIds"].([]string)[0] != "parent-version" {
+		t.Fatalf("scope check did not use the parent version: %#v", gql.requests[0])
+	}
+	if gql.requests[1]["currentSbomId"] != "parent-version" {
+		t.Fatalf("mutation did not use the parent version: %#v", gql.requests[1])
+	}
+	if result.Scope != VexScopeParent || result.ParentVersionID != "parent-version" || result.OwnerVersionID != "owner-version" {
+		t.Fatalf("unexpected scope fields: %#v", result)
+	}
+}
+
+func TestUpdateComponentVex_NotVisibleVersionIsRefusedWithoutMutation(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{`{"sbomsCompVuln": []}`},
+	}
+	client := &Client{gql: gql}
+
+	statusID := "status-1"
+	result, err := client.UpdateComponentVex(context.Background(), UpdateComponentVexInput{
+		ComponentVulnID:  "component-vuln-1",
+		CurrentVersionID: "unrelated-version",
+		VexStatusID:      &statusID,
+	})
+	if err == nil {
+		t.Fatalf("expected a refusal, got result %#v", result)
+	}
+	var notVisible *VexNotVisibleError
+	if !errors.As(err, &notVisible) {
+		t.Fatalf("err = %T %v, want *VexNotVisibleError", err, err)
+	}
+	for _, want := range []string{"component-vuln-1", "unrelated-version", "retracted", "get_version_relations"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %q", err.Error(), want)
+		}
+	}
+	if len(gql.requests) != 1 {
+		t.Fatalf("requests = %d, want only the scope check", len(gql.requests))
+	}
+}
+
+func TestUpdateComponentVex_ScopeCheckFailureSendsNoMutation(t *testing.T) {
+	gql := &failFirstGraphQLExecutor{err: errors.New("scope boom")}
+	client := &Client{gql: gql}
+
+	statusID := "status-1"
+	_, err := client.UpdateComponentVex(context.Background(), UpdateComponentVexInput{
+		ComponentVulnID:  "component-vuln-1",
+		CurrentVersionID: "version-1",
+		VexStatusID:      &statusID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "scope boom") {
+		t.Fatalf("err = %v, want the scope check error", err)
+	}
+	if gql.calls != 1 {
+		t.Fatalf("calls = %d, want 1 (no mutation after a failed check)", gql.calls)
+	}
+}
+
+// failFirstGraphQLExecutor fails the first call and counts every call.
+type failFirstGraphQLExecutor struct {
+	err   error
+	calls int
+}
+
+func (f *failFirstGraphQLExecutor) Execute(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
+	f.calls++
+	if f.calls == 1 {
+		return f.err
+	}
+	return nil
+}
+
 func TestBulkUpdateComponentVex_MapsInputsAndResults(t *testing.T) {
 	gql := &fakeGraphQLExecutor{
 		pages: []string{
+			`{"sbomsCompVuln": [
+				{"id": "component-vuln-1", "isPart": false, "sbomId": "version-1"},
+				{"id": "component-vuln-2", "isPart": false, "sbomId": "version-1"}
+			]}`,
 			`{
 				"componentVexBulkUpdate": {
 					"componentVulns": [
@@ -281,7 +394,7 @@ func TestBulkUpdateComponentVex_MapsInputsAndResults(t *testing.T) {
 		t.Fatalf("BulkUpdateComponentVex returned error: %v", err)
 	}
 
-	request := gql.requests[0]
+	request := gql.requests[1]
 	if got := request["componentVulnIds"].([]string); len(got) != 2 || got[0] != "component-vuln-1" || got[1] != "component-vuln-2" {
 		t.Fatalf("componentVulnIds = %#v, want two requested IDs", request["componentVulnIds"])
 	}
@@ -298,4 +411,179 @@ func TestBulkUpdateComponentVex_MapsInputsAndResults(t *testing.T) {
 	if len(result.Errors) != 1 || result.Errors[0] != "component-vuln-2 failed" {
 		t.Fatalf("Errors = %#v, want partial failure", result.Errors)
 	}
+}
+
+func bulkVexMutationPage(ids ...string) string {
+	nodes := make([]string, len(ids))
+	for i, id := range ids {
+		nodes[i] = `{"id": "` + id + `", "componentId": "component-1", "vulnId": "vuln-1", "sbomId": "owner-version", "vexStatus": {"id": "status-1", "name": "In Triage"}}`
+	}
+	return `{"componentVexBulkUpdate": {"componentVulns": [` + strings.Join(nodes, ",") + `], "errors": []}}`
+}
+
+func TestBulkUpdateComponentVex_MixedDirectAndParentCarryPerItemScope(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{"sbomsCompVuln": [
+				{"id": "direct-vuln", "isPart": false, "sbomId": "parent-version"},
+				{"id": "part-vuln", "isPart": true, "sbomId": "child-version"}
+			]}`,
+			bulkVexMutationPage("direct-vuln", "part-vuln"),
+		},
+	}
+	client := &Client{gql: gql}
+
+	currentVersionID := "parent-version"
+	statusID := "status-1"
+	result, err := client.BulkUpdateComponentVex(context.Background(), BulkUpdateComponentVexInput{
+		ComponentVulnIDs: []string{"direct-vuln", "part-vuln"},
+		CurrentVersionID: &currentVersionID,
+		VexStatusID:      &statusID,
+	})
+	if err != nil {
+		t.Fatalf("BulkUpdateComponentVex returned error: %v", err)
+	}
+
+	if ids := gql.requests[1]["componentVulnIds"].([]string); len(ids) != 2 {
+		t.Fatalf("mutation IDs = %#v, want both", gql.requests[1]["componentVulnIds"])
+	}
+	if got := result.Scopes["direct-vuln"]; got.Scope != VexScopeDirect {
+		t.Fatalf("direct-vuln scope = %#v, want direct", got)
+	}
+	if got := result.Scopes["part-vuln"]; got.Scope != VexScopeParent || got.OwnerVersionID != "child-version" {
+		t.Fatalf("part-vuln scope = %#v, want parent owned by child-version", got)
+	}
+	if result.ParentVersionID != "parent-version" {
+		t.Fatalf("ParentVersionID = %q, want parent-version", result.ParentVersionID)
+	}
+	if len(result.Refused) != 0 {
+		t.Fatalf("Refused = %#v, want none", result.Refused)
+	}
+}
+
+func TestBulkUpdateComponentVex_NotVisibleItemIsRefusedAndTheRestAreSent(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{"sbomsCompVuln": [{"id": "good-vuln", "isPart": true, "sbomId": "child-version"}]}`,
+			bulkVexMutationPage("good-vuln"),
+		},
+	}
+	client := &Client{gql: gql}
+
+	currentVersionID := "parent-version"
+	statusID := "status-1"
+	result, err := client.BulkUpdateComponentVex(context.Background(), BulkUpdateComponentVexInput{
+		ComponentVulnIDs: []string{"good-vuln", "bad-vuln"},
+		CurrentVersionID: &currentVersionID,
+		VexStatusID:      &statusID,
+	})
+	if err != nil {
+		t.Fatalf("BulkUpdateComponentVex returned error: %v", err)
+	}
+
+	ids := gql.requests[1]["componentVulnIds"].([]string)
+	if len(ids) != 1 || ids[0] != "good-vuln" {
+		t.Fatalf("mutation IDs = %#v, want only good-vuln", ids)
+	}
+	if len(result.Refused) != 1 || result.Refused[0].ComponentVulnID != "bad-vuln" || !strings.Contains(result.Refused[0].Reason, "get_version_relations") {
+		t.Fatalf("Refused = %#v, want bad-vuln with the not-visible reason", result.Refused)
+	}
+	if len(result.ComponentVulns) != 1 {
+		t.Fatalf("ComponentVulns = %#v, want one", result.ComponentVulns)
+	}
+}
+
+func TestBulkUpdateComponentVex_AllNotVisibleSendsNoMutation(t *testing.T) {
+	gql := &fakeGraphQLExecutor{pages: []string{`{"sbomsCompVuln": []}`}}
+	client := &Client{gql: gql}
+
+	currentVersionID := "unrelated-version"
+	statusID := "status-1"
+	result, err := client.BulkUpdateComponentVex(context.Background(), BulkUpdateComponentVexInput{
+		ComponentVulnIDs: []string{"a", "b"},
+		CurrentVersionID: &currentVersionID,
+		VexStatusID:      &statusID,
+	})
+	if err != nil {
+		t.Fatalf("BulkUpdateComponentVex returned error: %v", err)
+	}
+	if len(gql.requests) != 1 {
+		t.Fatalf("requests = %d, want only the scope check", len(gql.requests))
+	}
+	if len(result.Refused) != 2 || len(result.ComponentVulns) != 0 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestBulkUpdateComponentVex_WithoutCurrentVersionSkipsTheScopeCheck(t *testing.T) {
+	gql := &fakeGraphQLExecutor{pages: []string{bulkVexMutationPage("vuln-1")}}
+	client := &Client{gql: gql}
+
+	statusID := "status-1"
+	result, err := client.BulkUpdateComponentVex(context.Background(), BulkUpdateComponentVexInput{
+		ComponentVulnIDs: []string{"vuln-1"},
+		VexStatusID:      &statusID,
+	})
+	if err != nil {
+		t.Fatalf("BulkUpdateComponentVex returned error: %v", err)
+	}
+	if len(gql.requests) != 1 {
+		t.Fatalf("requests = %d, want only the mutation", len(gql.requests))
+	}
+	if result.ParentVersionID != "" || len(result.Scopes) != 0 {
+		t.Fatalf("expected no scope data, got %#v", result)
+	}
+}
+
+func TestBulkUpdateComponentVex_ScopeCheckFailureSendsNoMutation(t *testing.T) {
+	gql := &failFirstGraphQLExecutor{err: errors.New("scope boom")}
+	client := &Client{gql: gql}
+
+	currentVersionID := "version-1"
+	statusID := "status-1"
+	_, err := client.BulkUpdateComponentVex(context.Background(), BulkUpdateComponentVexInput{
+		ComponentVulnIDs: []string{"vuln-1"},
+		CurrentVersionID: &currentVersionID,
+		VexStatusID:      &statusID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "scope boom") {
+		t.Fatalf("err = %v, want the scope check error", err)
+	}
+	if gql.calls != 1 {
+		t.Fatalf("calls = %d, want 1", gql.calls)
+	}
+}
+
+func TestBulkUpdateComponentVex_MutationErrorNamesTheSentIDs(t *testing.T) {
+	gql := &secondCallFailsGraphQLExecutor{
+		first: `{"sbomsCompVuln": [{"id": "vuln-1", "isPart": false, "sbomId": "version-1"}, {"id": "vuln-2", "isPart": false, "sbomId": "version-1"}]}`,
+		err:   errors.New("api boom"),
+	}
+	client := &Client{gql: gql}
+
+	currentVersionID := "version-1"
+	statusID := "status-1"
+	_, err := client.BulkUpdateComponentVex(context.Background(), BulkUpdateComponentVexInput{
+		ComponentVulnIDs: []string{"vuln-1", "vuln-2"},
+		CurrentVersionID: &currentVersionID,
+		VexStatusID:      &statusID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "api boom") || !strings.Contains(err.Error(), "vuln-1") || !strings.Contains(err.Error(), "vuln-2") {
+		t.Fatalf("err = %v, want the API error naming both sent IDs", err)
+	}
+}
+
+// secondCallFailsGraphQLExecutor answers the first call with a fixed page and fails the next.
+type secondCallFailsGraphQLExecutor struct {
+	first string
+	err   error
+	calls int
+}
+
+func (f *secondCallFailsGraphQLExecutor) Execute(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
+	f.calls++
+	if f.calls == 1 {
+		return json.Unmarshal([]byte(f.first), result)
+	}
+	return f.err
 }

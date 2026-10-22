@@ -16,6 +16,8 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/interlynk-io/lynk-mcp/internal/graphql"
 )
@@ -131,7 +133,14 @@ type UpdateComponentVexInput struct {
 // UpdateComponentVexResult contains the VEX mutation result.
 type UpdateComponentVexResult struct {
 	ComponentVuln *ComponentVuln
-	Errors        []string
+	// Scope says whether the status was written on the vulnerability itself (direct)
+	// or as a parent-level disposition (parent).
+	Scope VexScope
+	// ParentVersionID is set for a parent write: the version the status applies to.
+	ParentVersionID string
+	// OwnerVersionID is the version that owns the vulnerability.
+	OwnerVersionID string
+	Errors         []string
 }
 
 // BulkUpdateComponentVexInput contains shared VEX fields for multiple component vulnerabilities.
@@ -154,7 +163,20 @@ type BulkUpdateComponentVexInput struct {
 // BulkUpdateComponentVexResult contains the bulk VEX mutation result.
 type BulkUpdateComponentVexResult struct {
 	ComponentVulns []ComponentVuln
-	Errors         []string
+	// Scopes holds the direct or parent scope of each vulnerability that was sent, by
+	// component vulnerability ID. It is empty when no current version was given.
+	Scopes map[string]VexScopeResult
+	// ParentVersionID is the version the parent writes apply to, when any item is a parent write.
+	ParentVersionID string
+	// Refused lists vulnerabilities that were not sent because they are not visible from the current version.
+	Refused []VexRefusal
+	Errors  []string
+}
+
+// VexRefusal explains why one vulnerability was left out of a bulk update.
+type VexRefusal struct {
+	ComponentVulnID string
+	Reason          string
 }
 
 // UpdateComponent updates mutable component metadata.
@@ -307,6 +329,15 @@ func (c *Client) UpdateComponentSupplier(ctx context.Context, input UpdateCompon
 
 // UpdateComponentVex updates VEX data for a component vulnerability.
 func (c *Client) UpdateComponentVex(ctx context.Context, input UpdateComponentVexInput) (*UpdateComponentVexResult, error) {
+	scopes, err := c.ResolveVexScope(ctx, input.CurrentVersionID, []string{input.ComponentVulnID})
+	if err != nil {
+		return nil, fmt.Errorf("checking VEX scope for version %s: %w", input.CurrentVersionID, err)
+	}
+	scope := scopes[input.ComponentVulnID]
+	if scope.Scope == VexScopeNotVisible {
+		return nil, &VexNotVisibleError{ComponentVulnID: input.ComponentVulnID, VersionID: input.CurrentVersionID}
+	}
+
 	vars := map[string]interface{}{
 		"componentVulnId": input.ComponentVulnID,
 		"currentSbomId":   input.CurrentVersionID,
@@ -354,7 +385,14 @@ func (c *Client) UpdateComponentVex(ctx context.Context, input UpdateComponentVe
 	}
 
 	mutation := result.ComponentVexUpdate
-	updateResult := &UpdateComponentVexResult{Errors: mutation.Errors}
+	updateResult := &UpdateComponentVexResult{
+		Scope:          scope.Scope,
+		OwnerVersionID: scope.OwnerVersionID,
+		Errors:         mutation.Errors,
+	}
+	if scope.Scope == VexScopeParent {
+		updateResult.ParentVersionID = input.CurrentVersionID
+	}
 	if mutation.ComponentVuln != nil {
 		componentVuln := &ComponentVuln{
 			ID:          mutation.ComponentVuln.ID,
@@ -386,8 +424,33 @@ func (c *Client) UpdateComponentVex(ctx context.Context, input UpdateComponentVe
 
 // BulkUpdateComponentVex updates VEX data for multiple component vulnerabilities.
 func (c *Client) BulkUpdateComponentVex(ctx context.Context, input BulkUpdateComponentVexInput) (*BulkUpdateComponentVexResult, error) {
+	sendIDs := input.ComponentVulnIDs
+	var scopes map[string]VexScopeResult
+	var refused []VexRefusal
+	hasCurrentVersion := input.CurrentVersionID != nil && *input.CurrentVersionID != ""
+	if hasCurrentVersion {
+		var err error
+		scopes, err = c.ResolveVexScope(ctx, *input.CurrentVersionID, input.ComponentVulnIDs)
+		if err != nil {
+			return nil, fmt.Errorf("checking VEX scope for version %s: %w", *input.CurrentVersionID, err)
+		}
+		sendIDs = make([]string, 0, len(input.ComponentVulnIDs))
+		for _, id := range input.ComponentVulnIDs {
+			if scopes[id].Scope == VexScopeNotVisible {
+				refusal := &VexNotVisibleError{ComponentVulnID: id, VersionID: *input.CurrentVersionID}
+				refused = append(refused, VexRefusal{ComponentVulnID: id, Reason: refusal.Error()})
+				delete(scopes, id)
+				continue
+			}
+			sendIDs = append(sendIDs, id)
+		}
+		if len(sendIDs) == 0 {
+			return &BulkUpdateComponentVexResult{ComponentVulns: []ComponentVuln{}, Refused: refused}, nil
+		}
+	}
+
 	vars := map[string]interface{}{
-		"componentVulnIds": input.ComponentVulnIDs,
+		"componentVulnIds": sendIDs,
 	}
 	addStringVar(vars, "currentSbomId", input.CurrentVersionID)
 	addStringVar(vars, "vexStatusId", input.VexStatusID)
@@ -429,11 +492,21 @@ func (c *Client) BulkUpdateComponentVex(ctx context.Context, input BulkUpdateCom
 	}
 
 	if err := c.gql.Execute(ctx, graphql.ComponentVexBulkUpdateMutation, vars, &result); err != nil {
-		return nil, err
+		// The API applies a bulk request as one batch, so the error covers every ID sent.
+		return nil, fmt.Errorf("bulk VEX update for component vulnerabilities %s: %w", strings.Join(sendIDs, ", "), err)
 	}
 
 	mutation := result.ComponentVexBulkUpdate
-	updateResult := &BulkUpdateComponentVexResult{Errors: mutation.Errors}
+	updateResult := &BulkUpdateComponentVexResult{Errors: mutation.Errors, Refused: refused}
+	if hasCurrentVersion {
+		updateResult.Scopes = scopes
+		for _, scope := range scopes {
+			if scope.Scope == VexScopeParent {
+				updateResult.ParentVersionID = *input.CurrentVersionID
+				break
+			}
+		}
+	}
 	updateResult.ComponentVulns = make([]ComponentVuln, len(mutation.ComponentVulns))
 	for i, node := range mutation.ComponentVulns {
 		componentVuln := ComponentVuln{
