@@ -16,6 +16,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -197,4 +198,101 @@ func TestDownloadSBOM_MapsCycloneDXDownload(t *testing.T) {
 	if result.Filename != "bom.cdx.json" || !result.Ready || result.ProcessingStatus["vulnScan"] != "FINISHED" {
 		t.Fatalf("unexpected download result: %#v", result)
 	}
+}
+
+func TestGetVersionRelations_MapsParentsAndDirectChildren(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"sbom": {
+					"id": "version-1",
+					"parents": [
+						{"id": "parent-1", "projectVersion": "2.0", "project": {"id": "env-p", "name": "default", "projectGroup": {"id": "product-p", "name": "my-application"}}},
+						{"id": "parent-2", "projectVersion": "3.0", "project": {"id": "env-q", "name": "production", "projectGroup": {"id": "product-q", "name": "platform"}}}
+					],
+					"directChildren": [
+						{"part": {"id": "child-1", "projectVersion": "17.0.0", "project": {"id": "env-c", "name": "default", "projectGroup": {"id": "product-c", "name": "nodejs"}}}}
+					]
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	result, err := client.GetVersionRelations(context.Background(), "version-1", false)
+	if err != nil {
+		t.Fatalf("GetVersionRelations returned error: %v", err)
+	}
+
+	if gql.requests[0]["sbomId"] != "version-1" || gql.requests[0]["deep"] != false {
+		t.Fatalf("unexpected variables: %#v", gql.requests[0])
+	}
+	if len(result.Parents) != 2 || result.Parents[0].VersionID != "parent-1" || result.Parents[0].ProductName != "my-application" || result.Parents[1].EnvironmentName != "production" {
+		t.Fatalf("unexpected parents: %#v", result.Parents)
+	}
+	if len(result.Children) != 1 {
+		t.Fatalf("Children = %#v, want one", result.Children)
+	}
+	child := result.Children[0]
+	if child.VersionID != "child-1" || child.Version != "17.0.0" || child.ProductID != "product-c" || child.ProductName != "nodejs" || child.EnvironmentID != "env-c" {
+		t.Fatalf("unexpected child: %#v", child)
+	}
+}
+
+func TestGetVersionRelations_NoRelationsReturnsEmptyLists(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{`{"sbom": {"id": "version-1", "parents": [], "directChildren": []}}`},
+	}
+	client := &Client{gql: gql}
+
+	result, err := client.GetVersionRelations(context.Background(), "version-1", false)
+	if err != nil {
+		t.Fatalf("GetVersionRelations returned error: %v", err)
+	}
+	if result.Parents == nil || result.Children == nil || len(result.Parents) != 0 || len(result.Children) != 0 {
+		t.Fatalf("want empty non-nil lists, got %#v", result)
+	}
+}
+
+func TestGetVersionRelations_DeepReadsDescendants(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"sbom": {
+					"id": "version-1",
+					"parents": [],
+					"descendants": [
+						{"id": "child-1", "projectVersion": "1", "project": {"id": "e1", "name": "default", "projectGroup": {"id": "p1", "name": "a"}}},
+						{"id": "grandchild-1", "projectVersion": "2", "project": {"id": "e2", "name": "default", "projectGroup": {"id": "p2", "name": "b"}}}
+					]
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	result, err := client.GetVersionRelations(context.Background(), "version-1", true)
+	if err != nil {
+		t.Fatalf("GetVersionRelations returned error: %v", err)
+	}
+	if gql.requests[0]["deep"] != true {
+		t.Fatalf("deep variable = %#v, want true", gql.requests[0]["deep"])
+	}
+	if len(result.Children) != 2 || result.Children[1].VersionID != "grandchild-1" {
+		t.Fatalf("unexpected descendants: %#v", result.Children)
+	}
+}
+
+func TestGetVersionRelations_ReturnsGraphQLError(t *testing.T) {
+	client := &Client{gql: errGraphQLExecutor{err: errors.New("boom")}}
+
+	if _, err := client.GetVersionRelations(context.Background(), "version-1", false); err == nil || err.Error() != "boom" {
+		t.Fatalf("err = %v, want boom", err)
+	}
+}
+
+type errGraphQLExecutor struct{ err error }
+
+func (e errGraphQLExecutor) Execute(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
+	return e.err
 }

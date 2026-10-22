@@ -337,6 +337,41 @@ func versionOrderBy(sortBy, sortOrder string) (string, string, error) {
 	return field, dir, nil
 }
 
+func (s *Server) handleGetVersionRelations(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := toolArguments(request)
+	versionID, ok := args["version_id"].(string)
+	if !ok || versionID == "" {
+		return newToolResultError("Missing required parameter: version_id"), nil
+	}
+	deep, _ := args["deep"].(bool)
+
+	relations, err := s.client.GetVersionRelations(ctx, versionID, deep)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("Failed to get version relations: %v", err)), nil
+	}
+
+	return formatResult(map[string]interface{}{
+		"versionId": versionID,
+		"parents":   formatVersionRelations(relations.Parents),
+		"children":  formatVersionRelations(relations.Children),
+	})
+}
+
+func formatVersionRelations(relations []api.VersionRelation) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(relations))
+	for i, relation := range relations {
+		result[i] = map[string]interface{}{
+			"versionId":       relation.VersionID,
+			"version":         relation.Version,
+			"environmentId":   relation.EnvironmentID,
+			"environmentName": relation.EnvironmentName,
+			"productId":       relation.ProductID,
+			"productName":     relation.ProductName,
+		}
+	}
+	return result
+}
+
 func (s *Server) handleGetVersion(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := toolArguments(request)
 	id, ok := args["id"].(string)
@@ -1227,7 +1262,27 @@ func (s *Server) handleUpdateComponentVex(ctx context.Context, request mcp.CallT
 		return newToolResultError("Failed to update component VEX: API returned no component vulnerability"), nil
 	}
 
-	return formatResult(formatComponentVuln(result.ComponentVuln))
+	formatted := formatComponentVuln(result.ComponentVuln)
+	if result.Scope == api.VexScopeParent {
+		// A parent write returns the parent-level record, whose id is not the vulnerability's.
+		// Keep id meaning the requested vulnerability, and expose the record id separately.
+		formatted["dispositionId"] = result.ComponentVuln.ID
+		formatted["id"] = componentVulnID
+	}
+	addVexScope(formatted, result.Scope, result.ParentVersionID, result.OwnerVersionID)
+	return formatResult(formatted)
+}
+
+// addVexScope reports whether a VEX update was written directly on the vulnerability
+// or as a parent-level disposition, and which versions are involved.
+func addVexScope(formatted map[string]interface{}, scope api.VexScope, parentVersionID, ownerVersionID string) {
+	formatted["dispositionScope"] = string(scope)
+	if parentVersionID != "" {
+		formatted["parentVersionId"] = parentVersionID
+	}
+	if ownerVersionID != "" {
+		formatted["ownerVersionId"] = ownerVersionID
+	}
 }
 
 func (s *Server) handleBulkUpdateComponentVex(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -3471,7 +3526,14 @@ func formatBulkComponentVexResult(requestedIDs []string, result *api.BulkUpdateC
 	updated := make([]map[string]interface{}, len(result.ComponentVulns))
 	for i, componentVuln := range result.ComponentVulns {
 		updatedByID[componentVuln.ID] = componentVuln
-		updated[i] = formatComponentVuln(&componentVuln)
+		updated[i] = formatBulkUpdatedComponentVuln(&componentVuln, result)
+	}
+
+	refusalByID := make(map[string]string, len(result.Refused))
+	errorsOut := append([]string{}, result.Errors...)
+	for _, refusal := range result.Refused {
+		refusalByID[refusal.ComponentVulnID] = refusal.Reason
+		errorsOut = append(errorsOut, refusal.Reason)
 	}
 
 	failed := make([]map[string]interface{}, 0)
@@ -3482,7 +3544,9 @@ func formatBulkComponentVexResult(requestedIDs []string, result *api.BulkUpdateC
 		failure := map[string]interface{}{
 			"componentVulnId": id,
 		}
-		if len(result.Errors) > 0 {
+		if reason, refused := refusalByID[id]; refused {
+			failure["errors"] = []string{reason}
+		} else if len(result.Errors) > 0 {
 			failure["errors"] = result.Errors
 		} else {
 			failure["errors"] = []string{"API returned no updated component vulnerability for requested ID"}
@@ -3496,8 +3560,30 @@ func formatBulkComponentVexResult(requestedIDs []string, result *api.BulkUpdateC
 		"failedCount":    len(failed),
 		"updated":        updated,
 		"failed":         failed,
-		"errors":         result.Errors,
+		"errors":         errorsOut,
 	}
+}
+
+// formatBulkUpdatedComponentVuln formats one updated item with its own direct or parent scope.
+// The bulk mutation returns the owner's record even for a parent write, so a parent item
+// omits that record's status and points to where the parent-level status can be read.
+func formatBulkUpdatedComponentVuln(componentVuln *api.ComponentVuln, result *api.BulkUpdateComponentVexResult) map[string]interface{} {
+	formatted := formatComponentVuln(componentVuln)
+	scope, known := result.Scopes[componentVuln.ID]
+	if !known {
+		addVexScope(formatted, api.VexScopeDirect, "", "")
+		return formatted
+	}
+	parentVersionID := ""
+	if scope.Scope == api.VexScopeParent {
+		parentVersionID = result.ParentVersionID
+		for _, ownerField := range []string{"vexStatus", "vexJustification", "fixedIn", "detail", "impact", "actionStmt", "customFieldAttributes"} {
+			delete(formatted, ownerField)
+		}
+		formatted["statusNote"] = "The API returns the owner's record for a parent write, so the owner's status and fields are not shown here. Read the parent-level status with list_vulnerabilities on the parent version."
+	}
+	addVexScope(formatted, scope.Scope, parentVersionID, scope.OwnerVersionID)
+	return formatted
 }
 
 func formatDoctorResults(versionID string, result *api.DoctorResultsResult) map[string]interface{} {

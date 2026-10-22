@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,21 +28,27 @@ import (
 
 type fakeLynkClient struct {
 	lynkClient
-	listLabelsInput             api.ListLabelsInput
-	listProductsInput           api.ListProductsInput
-	listVersionVulnsInput       api.ListVersionVulnsInput
-	listVersionVulnsInputs      []api.ListVersionVulnsInput
-	listVersionVulnsResults     map[string]*api.ComponentVulnsResult
-	listCustomFieldDefsInput    api.ListComponentVulnCustomFieldDefinitionsInput
-	listComponentVulnsInput     api.ListComponentVulnsInput
-	listVersionsInput           api.ListVersionsInput
-	searchVersionsInput         api.VersionSearchInput
-	listComponentsInput         api.ListComponentsInput
-	downloadSBOMInput           api.DownloadSBOMInput
-	bulkUpdateComponentVexInput api.BulkUpdateComponentVexInput
-	ticketingStatusInput        api.TicketingStatusInput
-	createSupportLevelInput     api.CreateComponentSupportLevelInput
-	updateSupportLevelInput     api.UpdateComponentSupportLevelInput
+	listLabelsInput              api.ListLabelsInput
+	listProductsInput            api.ListProductsInput
+	listVersionVulnsInput        api.ListVersionVulnsInput
+	listVersionVulnsInputs       []api.ListVersionVulnsInput
+	listVersionVulnsResults      map[string]*api.ComponentVulnsResult
+	listCustomFieldDefsInput     api.ListComponentVulnCustomFieldDefinitionsInput
+	listComponentVulnsInput      api.ListComponentVulnsInput
+	listVersionsInput            api.ListVersionsInput
+	searchVersionsInput          api.VersionSearchInput
+	listComponentsInput          api.ListComponentsInput
+	downloadSBOMInput            api.DownloadSBOMInput
+	bulkUpdateComponentVexInput  api.BulkUpdateComponentVexInput
+	updateComponentVexInput      api.UpdateComponentVexInput
+	updateComponentVexResult     *api.UpdateComponentVexResult
+	updateComponentVexErr        error
+	bulkUpdateComponentVexResult *api.BulkUpdateComponentVexResult
+	versionRelationsVersionID    string
+	versionRelationsDeep         bool
+	ticketingStatusInput         api.TicketingStatusInput
+	createSupportLevelInput      api.CreateComponentSupportLevelInput
+	updateSupportLevelInput      api.UpdateComponentSupportLevelInput
 }
 
 func (f *fakeLynkClient) CreateComponentSupportLevel(ctx context.Context, input api.CreateComponentSupportLevelInput) (*api.ComponentSupportLevelResult, error) {
@@ -222,6 +229,19 @@ func (f *fakeLynkClient) GetEnvironment(ctx context.Context, id string) (*api.En
 				FullName:     "workspace/repo",
 				ImportStatus: "completed",
 			},
+		},
+	}, nil
+}
+
+func (f *fakeLynkClient) GetVersionRelations(ctx context.Context, id string, deep bool) (*api.VersionRelations, error) {
+	f.versionRelationsVersionID = id
+	f.versionRelationsDeep = deep
+	return &api.VersionRelations{
+		Parents: []api.VersionRelation{
+			{VersionID: "parent-1", Version: "1.0", EnvironmentID: "env-p", EnvironmentName: "default", ProductID: "product-p", ProductName: "my-application"},
+		},
+		Children: []api.VersionRelation{
+			{VersionID: "child-1", Version: "17.0.0", EnvironmentID: "env-c", EnvironmentName: "default", ProductID: "product-c", ProductName: "nodejs"},
 		},
 	}, nil
 }
@@ -431,8 +451,19 @@ func (f *fakeLynkClient) GetVexJustifications(ctx context.Context) ([]api.VexJus
 	}, nil
 }
 
+func (f *fakeLynkClient) UpdateComponentVex(ctx context.Context, input api.UpdateComponentVexInput) (*api.UpdateComponentVexResult, error) {
+	f.updateComponentVexInput = input
+	if f.updateComponentVexErr != nil {
+		return nil, f.updateComponentVexErr
+	}
+	return f.updateComponentVexResult, nil
+}
+
 func (f *fakeLynkClient) BulkUpdateComponentVex(ctx context.Context, input api.BulkUpdateComponentVexInput) (*api.BulkUpdateComponentVexResult, error) {
 	f.bulkUpdateComponentVexInput = input
+	if f.bulkUpdateComponentVexResult != nil {
+		return f.bulkUpdateComponentVexResult, nil
+	}
 	return &api.BulkUpdateComponentVexResult{
 		ComponentVulns: []api.ComponentVuln{
 			{
@@ -671,6 +702,65 @@ func TestHandleGetVersion_IncludesComponentVulnerabilitySummary(t *testing.T) {
 	component := components[0].(map[string]interface{})
 	if component["componentId"] != "component-1" || component["totalCount"] != float64(2) {
 		t.Fatalf("unexpected component summary: %#v", component)
+	}
+}
+
+func TestHandleGetVersionRelations_RequiresVersionID(t *testing.T) {
+	server := &Server{client: &fakeLynkClient{}}
+	result, err := server.handleGetVersionRelations(context.Background(), mcpg.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("handleGetVersionRelations returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected a tool error for a missing version_id")
+	}
+}
+
+func TestHandleGetVersionRelations_FormatsParentsAndChildren(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleGetVersionRelations(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{"version_id": "version-1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleGetVersionRelations returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleGetVersionRelations returned tool error: %#v", result.Content)
+	}
+	if client.versionRelationsVersionID != "version-1" || client.versionRelationsDeep {
+		t.Fatalf("unexpected client input: id=%q deep=%v", client.versionRelationsVersionID, client.versionRelationsDeep)
+	}
+
+	output := toolResultMap(t, result)
+	if output["versionId"] != "version-1" {
+		t.Fatalf("versionId = %#v, want version-1", output["versionId"])
+	}
+	parents := output["parents"].([]interface{})
+	children := output["children"].([]interface{})
+	if len(parents) != 1 || len(children) != 1 {
+		t.Fatalf("parents=%d children=%d, want 1 and 1", len(parents), len(children))
+	}
+	child := children[0].(map[string]interface{})
+	if child["versionId"] != "child-1" || child["version"] != "17.0.0" || child["productName"] != "nodejs" || child["productId"] != "product-c" || child["environmentName"] != "default" {
+		t.Fatalf("unexpected child: %#v", child)
+	}
+}
+
+func TestHandleGetVersionRelations_PassesDeepThrough(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	if _, err := server.handleGetVersionRelations(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{"version_id": "version-1", "deep": true},
+		},
+	}); err != nil {
+		t.Fatalf("handleGetVersionRelations returned error: %v", err)
+	}
+	if !client.versionRelationsDeep {
+		t.Fatal("deep was not passed to the client")
 	}
 }
 
@@ -1010,6 +1100,197 @@ func TestHandleSearchVulnerabilities_RejectsEmptyPurl(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatal("expected empty purl to return a tool error")
+	}
+}
+
+func updateComponentVexRequest(extra map[string]interface{}) mcpg.CallToolRequest {
+	args := map[string]interface{}{
+		"confirm":            true,
+		"component_vuln_id":  "component-vuln-1",
+		"current_version_id": "version-1",
+		"vex_status_id":      "status-1",
+	}
+	for key, value := range extra {
+		args[key] = value
+	}
+	return mcpg.CallToolRequest{Params: mcpg.CallToolParams{Arguments: args}}
+}
+
+func TestHandleUpdateComponentVex_DirectWriteReportsScope(t *testing.T) {
+	client := &fakeLynkClient{updateComponentVexResult: &api.UpdateComponentVexResult{
+		ComponentVuln:  &api.ComponentVuln{ID: "component-vuln-1", VersionID: "version-1", VexStatus: &api.VexStatus{ID: "status-1", Name: "Not Affected"}},
+		Scope:          api.VexScopeDirect,
+		OwnerVersionID: "version-1",
+	}}
+	server := &Server{client: client}
+
+	result, err := server.handleUpdateComponentVex(context.Background(), updateComponentVexRequest(nil))
+	if err != nil {
+		t.Fatalf("handleUpdateComponentVex returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleUpdateComponentVex returned tool error: %#v", result.Content)
+	}
+
+	output := toolResultMap(t, result)
+	if output["dispositionScope"] != "direct" || output["ownerVersionId"] != "version-1" {
+		t.Fatalf("unexpected scope fields: %#v", output)
+	}
+	if _, present := output["parentVersionId"]; present {
+		t.Fatalf("parentVersionId must be absent for a direct write: %#v", output)
+	}
+	if _, present := output["dispositionId"]; present {
+		t.Fatalf("dispositionId must be absent for a direct write: %#v", output)
+	}
+}
+
+func TestHandleUpdateComponentVex_ParentWriteReportsParentAndOwner(t *testing.T) {
+	client := &fakeLynkClient{updateComponentVexResult: &api.UpdateComponentVexResult{
+		ComponentVuln:   &api.ComponentVuln{ID: "disposition-1", VersionID: "owner-version", VexStatus: &api.VexStatus{ID: "status-1", Name: "In Triage"}},
+		Scope:           api.VexScopeParent,
+		ParentVersionID: "parent-version",
+		OwnerVersionID:  "owner-version",
+	}}
+	server := &Server{client: client}
+
+	result, err := server.handleUpdateComponentVex(context.Background(), updateComponentVexRequest(map[string]interface{}{"current_version_id": "parent-version"}))
+	if err != nil {
+		t.Fatalf("handleUpdateComponentVex returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleUpdateComponentVex returned tool error: %#v", result.Content)
+	}
+
+	output := toolResultMap(t, result)
+	if output["dispositionScope"] != "parent" || output["parentVersionId"] != "parent-version" || output["ownerVersionId"] != "owner-version" {
+		t.Fatalf("unexpected scope fields: %#v", output)
+	}
+	if output["id"] != "component-vuln-1" || output["dispositionId"] != "disposition-1" {
+		t.Fatalf("id = %#v, dispositionId = %#v; want the requested vulnerability id and the parent record id", output["id"], output["dispositionId"])
+	}
+}
+
+func TestHandleUpdateComponentVex_RefusalIsAToolErrorNamingRelationsTool(t *testing.T) {
+	client := &fakeLynkClient{updateComponentVexErr: &api.VexNotVisibleError{ComponentVulnID: "component-vuln-1", VersionID: "unrelated-version"}}
+	server := &Server{client: client}
+
+	result, err := server.handleUpdateComponentVex(context.Background(), updateComponentVexRequest(map[string]interface{}{"current_version_id": "unrelated-version"}))
+	if err != nil {
+		t.Fatalf("handleUpdateComponentVex returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected a tool error for a refused update")
+	}
+	text := result.Content[0].(mcpg.TextContent).Text
+	if !strings.Contains(text, "get_version_relations") {
+		t.Fatalf("error %q does not name get_version_relations", text)
+	}
+}
+
+func bulkVexRequest(ids ...interface{}) mcpg.CallToolRequest {
+	return mcpg.CallToolRequest{Params: mcpg.CallToolParams{Arguments: map[string]interface{}{
+		"confirm":            true,
+		"component_vuln_ids": ids,
+		"current_version_id": "parent-version",
+		"vex_status_id":      "status-1",
+	}}}
+}
+
+func TestHandleBulkUpdateComponentVex_ReportsPerItemScope(t *testing.T) {
+	client := &fakeLynkClient{bulkUpdateComponentVexResult: &api.BulkUpdateComponentVexResult{
+		ComponentVulns: []api.ComponentVuln{
+			{ID: "direct-vuln", VersionID: "parent-version", VexStatus: &api.VexStatus{ID: "status-1", Name: "In Triage"}},
+			{ID: "part-vuln", VersionID: "child-version", FixedIn: "9.9", Detail: "owner detail", Impact: "owner impact", ActionStmt: "owner action", VexStatus: &api.VexStatus{ID: "old", Name: "Not Affected"}},
+		},
+		Scopes: map[string]api.VexScopeResult{
+			"direct-vuln": {Scope: api.VexScopeDirect, OwnerVersionID: "parent-version"},
+			"part-vuln":   {Scope: api.VexScopeParent, OwnerVersionID: "child-version"},
+		},
+		ParentVersionID: "parent-version",
+	}}
+	server := &Server{client: client}
+
+	result, err := server.handleBulkUpdateComponentVex(context.Background(), bulkVexRequest("direct-vuln", "part-vuln"))
+	if err != nil {
+		t.Fatalf("handleBulkUpdateComponentVex returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handleBulkUpdateComponentVex returned tool error: %#v", result.Content)
+	}
+
+	updated := toolResultMap(t, result)["updated"].([]interface{})
+	direct := updated[0].(map[string]interface{})
+	part := updated[1].(map[string]interface{})
+	if direct["dispositionScope"] != "direct" || direct["ownerVersionId"] != "parent-version" {
+		t.Fatalf("unexpected direct item: %#v", direct)
+	}
+	if _, present := direct["parentVersionId"]; present {
+		t.Fatalf("direct item must not carry parentVersionId: %#v", direct)
+	}
+	if part["dispositionScope"] != "parent" || part["parentVersionId"] != "parent-version" || part["ownerVersionId"] != "child-version" {
+		t.Fatalf("unexpected parent item: %#v", part)
+	}
+	if _, present := part["vexStatus"]; present {
+		t.Fatalf("parent item must not echo the owner's status as the result: %#v", part)
+	}
+	if part["statusNote"] == nil {
+		t.Fatalf("parent item should say where to read the parent-level status: %#v", part)
+	}
+	for _, ownerField := range []string{"fixedIn", "detail", "impact", "actionStmt"} {
+		if _, present := part[ownerField]; present {
+			t.Fatalf("parent item must not echo the owner's %s: %#v", ownerField, part)
+		}
+	}
+	if part["id"] != "part-vuln" || part["versionId"] != "child-version" {
+		t.Fatalf("parent item should keep its identifying fields: %#v", part)
+	}
+}
+
+func TestHandleBulkUpdateComponentVex_WithoutCurrentVersionItemsAreDirect(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+
+	request := mcpg.CallToolRequest{Params: mcpg.CallToolParams{Arguments: map[string]interface{}{
+		"confirm":            true,
+		"component_vuln_ids": []interface{}{"component-vuln-1"},
+		"vex_status_id":      "status-1",
+	}}}
+	result, err := server.handleBulkUpdateComponentVex(context.Background(), request)
+	if err != nil {
+		t.Fatalf("handleBulkUpdateComponentVex returned error: %v", err)
+	}
+	updated := toolResultMap(t, result)["updated"].([]interface{})
+	if updated[0].(map[string]interface{})["dispositionScope"] != "direct" {
+		t.Fatalf("expected direct scope without a current version: %#v", updated[0])
+	}
+}
+
+func TestHandleBulkUpdateComponentVex_RefusedItemsAreFailedWithTheirOwnReason(t *testing.T) {
+	client := &fakeLynkClient{bulkUpdateComponentVexResult: &api.BulkUpdateComponentVexResult{
+		ComponentVulns: []api.ComponentVuln{{ID: "good-vuln", VersionID: "child-version"}},
+		Scopes:         map[string]api.VexScopeResult{"good-vuln": {Scope: api.VexScopeParent, OwnerVersionID: "child-version"}},
+		Refused:        []api.VexRefusal{{ComponentVulnID: "bad-vuln", Reason: "vulnerability bad-vuln is not visible from version parent-version"}},
+		Errors:         []string{"api warning"},
+	}}
+	server := &Server{client: client}
+
+	result, err := server.handleBulkUpdateComponentVex(context.Background(), bulkVexRequest("good-vuln", "bad-vuln"))
+	if err != nil {
+		t.Fatalf("handleBulkUpdateComponentVex returned error: %v", err)
+	}
+
+	output := toolResultMap(t, result)
+	failed := output["failed"].([]interface{})
+	if len(failed) != 1 {
+		t.Fatalf("failed = %#v, want one", failed)
+	}
+	entry := failed[0].(map[string]interface{})
+	reasons := entry["errors"].([]interface{})
+	if entry["componentVulnId"] != "bad-vuln" || len(reasons) != 1 || !strings.Contains(reasons[0].(string), "not visible") {
+		t.Fatalf("unexpected failed entry: %#v", entry)
+	}
+	if topErrors := output["errors"].([]interface{}); len(topErrors) != 2 {
+		t.Fatalf("errors = %#v, want the API warning plus the refusal", topErrors)
 	}
 }
 
