@@ -47,6 +47,18 @@ type fakeLynkClient struct {
 	versionRelationsVersionID    string
 	versionRelationsDeep         bool
 	ticketingStatusInput         api.TicketingStatusInput
+	createSupportLevelInput      api.CreateComponentSupportLevelInput
+	updateSupportLevelInput      api.UpdateComponentSupportLevelInput
+}
+
+func (f *fakeLynkClient) CreateComponentSupportLevel(ctx context.Context, input api.CreateComponentSupportLevelInput) (*api.ComponentSupportLevelResult, error) {
+	f.createSupportLevelInput = input
+	return &api.ComponentSupportLevelResult{SupportLevel: &api.ComponentSupportLevel{ID: "csl-1", ComponentID: input.ComponentID, Level: "abandoned"}}, nil
+}
+
+func (f *fakeLynkClient) UpdateComponentSupportLevel(ctx context.Context, input api.UpdateComponentSupportLevelInput) (*api.ComponentSupportLevelResult, error) {
+	f.updateSupportLevelInput = input
+	return &api.ComponentSupportLevelResult{SupportLevel: &api.ComponentSupportLevel{ID: input.ID, ComponentID: "component-1", Level: "no_longer_maintained"}}, nil
 }
 
 func (f *fakeLynkClient) ListComponentVulnCustomFieldDefinitions(ctx context.Context, input api.ListComponentVulnCustomFieldDefinitionsInput) (*api.ComponentVulnCustomFieldDefinitionsResult, error) {
@@ -1700,5 +1712,89 @@ func TestHandleGetEnvironment_IncludesLatestVersion(t *testing.T) {
 	output := toolResultMap(t, result)
 	if _, ok := output["latestVersion"].(map[string]interface{}); !ok {
 		t.Fatalf("expected latestVersion in output: %#v", output)
+	}
+}
+
+func TestHandleCreateComponentSupportLevel_RequiresConfirm(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleCreateComponentSupportLevel(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{Arguments: map[string]interface{}{"component_id": "component-1"}},
+	})
+	if err != nil {
+		t.Fatalf("handleCreateComponentSupportLevel returned error: %v", err)
+	}
+	if !result.IsError || client.createSupportLevelInput.ComponentID != "" {
+		t.Fatal("expected missing confirm to return a tool error without calling the API")
+	}
+}
+
+func TestHandleCreateComponentSupportLevel_PassesInputs(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleCreateComponentSupportLevel(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"component_id":               "component-1",
+				"confirm":                    true,
+				"level":                      "abandoned",
+				"end_date":                   "2027-01-31T00:00:00Z",
+				"retain_manual_override_for": float64(30),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleCreateComponentSupportLevel returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %#v", result.Content)
+	}
+	input := client.createSupportLevelInput
+	if input.ComponentID != "component-1" || input.Level == nil || *input.Level != "abandoned" ||
+		input.EndDate == nil || *input.EndDate != "2027-01-31T00:00:00Z" ||
+		input.RetainManualOverrideFor == nil || *input.RetainManualOverrideFor != 30 || input.Notes != nil {
+		t.Fatalf("unexpected input: %#v", input)
+	}
+	if output := toolResultMap(t, result); output["id"] != "csl-1" {
+		t.Fatalf("unexpected output: %#v", output)
+	}
+}
+
+func TestHandleUpdateComponentSupportLevel_RequiresFields(t *testing.T) {
+	server := &Server{client: &fakeLynkClient{}}
+	result, err := server.handleUpdateComponentSupportLevel(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{Arguments: map[string]interface{}{"id": "csl-1", "confirm": true}},
+	})
+	if err != nil {
+		t.Fatalf("handleUpdateComponentSupportLevel returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected no update fields to return a tool error")
+	}
+}
+
+func TestHandleUpdateComponentSupportLevel_PassesZeroOverride(t *testing.T) {
+	client := &fakeLynkClient{}
+	server := &Server{client: client}
+	result, err := server.handleUpdateComponentSupportLevel(context.Background(), mcpg.CallToolRequest{
+		Params: mcpg.CallToolParams{
+			Arguments: map[string]interface{}{
+				"id":                         "csl-1",
+				"confirm":                    true,
+				"notes":                      "",
+				"retain_manual_override_for": float64(0),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleUpdateComponentSupportLevel returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %#v", result.Content)
+	}
+	input := client.updateSupportLevelInput
+	if input.ID != "csl-1" || input.Notes == nil || *input.Notes != "" ||
+		input.RetainManualOverrideFor == nil || *input.RetainManualOverrideFor != 0 || input.Level != nil {
+		t.Fatalf("unexpected input: %#v", input)
 	}
 }

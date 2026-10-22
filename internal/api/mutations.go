@@ -76,8 +76,6 @@ type UpdateComponentInput struct {
 	Internal         *bool
 	GenerateUniqueID *bool
 	Scope            *string
-	SupportLevel     *string
-	EndOfSupport     *string
 	Notice           *string
 	Checksums        *[]ChecksumInput
 	ExternalURLs     *[]ExternalURLInput
@@ -111,6 +109,43 @@ type UpdateComponentSupplierInput struct {
 type UpdateComponentSupplierResult struct {
 	Supplier *ComponentSupplier
 	Errors   []string
+}
+
+// ComponentSupportLevel represents a component support level record.
+type ComponentSupportLevel struct {
+	ID                      string
+	ComponentID             string
+	Level                   string
+	EndDate                 string
+	Notes                   string
+	RetainManualOverrideFor int
+	SupplierDescription     string
+}
+
+// CreateComponentSupportLevelInput contains the support level to create for a component.
+type CreateComponentSupportLevelInput struct {
+	ComponentID             string
+	Level                   *string
+	EndDate                 *string
+	Notes                   *string
+	RetainManualOverrideFor *int
+	SupplierDescription     *string
+}
+
+// UpdateComponentSupportLevelInput contains mutable component support level fields.
+type UpdateComponentSupportLevelInput struct {
+	ID                      string
+	Level                   *string
+	EndDate                 *string
+	Notes                   *string
+	RetainManualOverrideFor *int
+	SupplierDescription     *string
+}
+
+// ComponentSupportLevelResult contains a component support level mutation result.
+type ComponentSupportLevelResult struct {
+	SupportLevel *ComponentSupportLevel
+	Errors       []string
 }
 
 // UpdateComponentVexInput contains mutable VEX fields for a component vulnerability.
@@ -193,8 +228,6 @@ func (c *Client) UpdateComponent(ctx context.Context, input UpdateComponentInput
 	addStringVar(vars, "group", input.Group)
 	addStringVar(vars, "purl", input.Purl)
 	addStringVar(vars, "scope", input.Scope)
-	addStringVar(vars, "supportLevel", input.SupportLevel)
-	addStringVar(vars, "endOfSupport", input.EndOfSupport)
 	addStringVar(vars, "notice", input.Notice)
 	addBoolVar(vars, "primary", input.Primary)
 	addBoolVar(vars, "internal", input.Internal)
@@ -325,6 +358,73 @@ func (c *Client) UpdateComponentSupplier(ctx context.Context, input UpdateCompon
 	}
 
 	return updateResult, nil
+}
+
+type componentSupportLevelPayload struct {
+	SupportLevel *struct {
+		ID                      string `json:"id"`
+		ComponentID             string `json:"componentId"`
+		Level                   string `json:"level"`
+		EndDate                 string `json:"endDate"`
+		Notes                   string `json:"notes"`
+		RetainManualOverrideFor int    `json:"retainManualOverrideFor"`
+		SupplierDescription     string `json:"supplierDescription"`
+	} `json:"componentSupportLevel"`
+	Errors []string `json:"errors"`
+}
+
+func (p componentSupportLevelPayload) toResult() *ComponentSupportLevelResult {
+	result := &ComponentSupportLevelResult{Errors: p.Errors}
+	if p.SupportLevel != nil {
+		result.SupportLevel = &ComponentSupportLevel{
+			ID:                      p.SupportLevel.ID,
+			ComponentID:             p.SupportLevel.ComponentID,
+			Level:                   p.SupportLevel.Level,
+			EndDate:                 p.SupportLevel.EndDate,
+			Notes:                   p.SupportLevel.Notes,
+			RetainManualOverrideFor: p.SupportLevel.RetainManualOverrideFor,
+			SupplierDescription:     p.SupportLevel.SupplierDescription,
+		}
+	}
+	return result
+}
+
+// CreateComponentSupportLevel creates the support level record for a component.
+func (c *Client) CreateComponentSupportLevel(ctx context.Context, input CreateComponentSupportLevelInput) (*ComponentSupportLevelResult, error) {
+	vars := map[string]interface{}{"componentId": input.ComponentID}
+	addStringVar(vars, "level", input.Level)
+	addStringVar(vars, "endDate", input.EndDate)
+	addStringVar(vars, "notes", input.Notes)
+	addStringVar(vars, "supplierDescription", input.SupplierDescription)
+	addIntVar(vars, "retainManualOverrideFor", input.RetainManualOverrideFor)
+
+	var result struct {
+		ComponentSupportLevelCreate componentSupportLevelPayload `json:"componentSupportLevelCreate"`
+	}
+	if err := c.gql.Execute(ctx, graphql.ComponentSupportLevelCreateMutation, vars, &result); err != nil {
+		return nil, err
+	}
+
+	return result.ComponentSupportLevelCreate.toResult(), nil
+}
+
+// UpdateComponentSupportLevel updates an existing component support level record.
+func (c *Client) UpdateComponentSupportLevel(ctx context.Context, input UpdateComponentSupportLevelInput) (*ComponentSupportLevelResult, error) {
+	vars := map[string]interface{}{"id": input.ID}
+	addStringVar(vars, "level", input.Level)
+	addStringVar(vars, "endDate", input.EndDate)
+	addStringVar(vars, "notes", input.Notes)
+	addStringVar(vars, "supplierDescription", input.SupplierDescription)
+	addIntVar(vars, "retainManualOverrideFor", input.RetainManualOverrideFor)
+
+	var result struct {
+		ComponentSupportLevelUpdate componentSupportLevelPayload `json:"componentSupportLevelUpdate"`
+	}
+	if err := c.gql.Execute(ctx, graphql.ComponentSupportLevelUpdateMutation, vars, &result); err != nil {
+		return nil, err
+	}
+
+	return result.ComponentSupportLevelUpdate.toResult(), nil
 }
 
 // UpdateComponentVex updates VEX data for a component vulnerability.
@@ -538,6 +638,12 @@ func (c *Client) BulkUpdateComponentVex(ctx context.Context, input BulkUpdateCom
 }
 
 func addStringVar(vars map[string]interface{}, key string, value *string) {
+	if value != nil {
+		vars[key] = *value
+	}
+}
+
+func addIntVar(vars map[string]interface{}, key string, value *int) {
 	if value != nil {
 		vars[key] = *value
 	}

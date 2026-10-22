@@ -413,6 +413,86 @@ func TestBulkUpdateComponentVex_MapsInputsAndResults(t *testing.T) {
 	}
 }
 
+func TestCreateComponentSupportLevel_MapsInputsAndResults(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"componentSupportLevelCreate": {
+					"componentSupportLevel": {
+						"id": "csl-1",
+						"componentId": "component-1",
+						"level": "abandoned",
+						"endDate": null,
+						"notes": "eol",
+						"retainManualOverrideFor": 30,
+						"supplierDescription": null
+					},
+					"errors": []
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	level := "abandoned"
+	days := 30
+	result, err := client.CreateComponentSupportLevel(context.Background(), CreateComponentSupportLevelInput{
+		ComponentID:             "component-1",
+		Level:                   &level,
+		RetainManualOverrideFor: &days,
+	})
+	if err != nil {
+		t.Fatalf("CreateComponentSupportLevel returned error: %v", err)
+	}
+
+	request := gql.requests[0]
+	if request["componentId"] != "component-1" || request["level"] != "abandoned" || request["retainManualOverrideFor"] != 30 {
+		t.Fatalf("unexpected variables: %#v", request)
+	}
+	if _, ok := request["notes"]; ok {
+		t.Fatalf("unset notes should be omitted: %#v", request)
+	}
+	if result.SupportLevel == nil || result.SupportLevel.ID != "csl-1" || result.SupportLevel.RetainManualOverrideFor != 30 || result.SupportLevel.Notes != "eol" {
+		t.Fatalf("unexpected result: %#v", result.SupportLevel)
+	}
+}
+
+func TestUpdateComponentSupportLevel_MapsInputsAndErrors(t *testing.T) {
+	gql := &fakeGraphQLExecutor{
+		pages: []string{
+			`{
+				"componentSupportLevelUpdate": {
+					"componentSupportLevel": null,
+					"errors": ["Component support level not found"]
+				}
+			}`,
+		},
+	}
+	client := &Client{gql: gql}
+
+	empty := ""
+	zero := 0
+	result, err := client.UpdateComponentSupportLevel(context.Background(), UpdateComponentSupportLevelInput{
+		ID:                      "csl-1",
+		Notes:                   &empty,
+		RetainManualOverrideFor: &zero,
+	})
+	if err != nil {
+		t.Fatalf("UpdateComponentSupportLevel returned error: %v", err)
+	}
+
+	request := gql.requests[0]
+	if request["id"] != "csl-1" || request["notes"] != "" || request["retainManualOverrideFor"] != 0 {
+		t.Fatalf("zero values were not preserved: %#v", request)
+	}
+	if result.SupportLevel != nil {
+		t.Fatalf("SupportLevel = %#v, want nil", result.SupportLevel)
+	}
+	if len(result.Errors) != 1 || result.Errors[0] != "Component support level not found" {
+		t.Fatalf("Errors = %#v, want API error", result.Errors)
+	}
+}
+
 func bulkVexMutationPage(ids ...string) string {
 	nodes := make([]string, len(ids))
 	for i, id := range ids {

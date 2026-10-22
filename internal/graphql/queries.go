@@ -537,9 +537,9 @@ const (
 
 	// ComponentUpdateMutation updates mutable component metadata for an SBOM component
 	ComponentUpdateMutation = `
-		mutation UpdateComponent($id: Uuid!, $sbomId: Uuid!, $kind: String, $name: String, $description: String, $copyright: String, $version: String, $group: String, $licenses: LicenseInput, $cpes: [String!], $purl: String, $primary: Boolean, $internal: Boolean, $generateUniqueId: Boolean, $scope: String, $supportLevel: ComponentSupportLevelEnum, $endOfSupport: DateOrEmptyString, $notice: String, $checksums: [ChecksumInput!], $externalUrls: [ExternalUrlInput!]) {
+		mutation UpdateComponent($id: Uuid!, $sbomId: Uuid!, $kind: String, $name: String, $description: String, $copyright: String, $version: String, $group: String, $licenses: LicenseInput, $cpes: [String!], $purl: String, $primary: Boolean, $internal: Boolean, $generateUniqueId: Boolean, $scope: String, $notice: String, $checksums: [ChecksumInput!], $externalUrls: [ExternalUrlInput!]) {
 			componentUpdate(
-				input: {id: $id, sbomId: $sbomId, kind: $kind, name: $name, copyright: $copyright, description: $description, version: $version, group: $group, licenses: $licenses, cpes: $cpes, purl: $purl, scope: $scope, primary: $primary, internal: $internal, generateUniqueId: $generateUniqueId, supportLevel: $supportLevel, endOfSupport: $endOfSupport, notice: $notice, checksums: $checksums, externalUrls: $externalUrls}
+				input: {id: $id, sbomId: $sbomId, kind: $kind, name: $name, copyright: $copyright, description: $description, version: $version, group: $group, licenses: $licenses, cpes: $cpes, purl: $purl, scope: $scope, primary: $primary, internal: $internal, generateUniqueId: $generateUniqueId, notice: $notice, checksums: $checksums, externalUrls: $externalUrls}
 			) {
 				component {
 					id
@@ -568,6 +568,46 @@ const (
 						name
 						url
 					}
+				}
+				errors
+			}
+		}
+	`
+
+	// ComponentSupportLevelCreateMutation creates the support level record for a component
+	ComponentSupportLevelCreateMutation = `
+		mutation CreateComponentSupportLevel($componentId: Uuid!, $level: ComponentSupportLevelValues, $endDate: ISO8601DateTime, $notes: String, $retainManualOverrideFor: Int, $supplierDescription: String) {
+			componentSupportLevelCreate(
+				input: {componentId: $componentId, level: $level, endDate: $endDate, notes: $notes, retainManualOverrideFor: $retainManualOverrideFor, supplierDescription: $supplierDescription}
+			) {
+				componentSupportLevel {
+					id
+					componentId
+					level
+					endDate
+					notes
+					retainManualOverrideFor
+					supplierDescription
+				}
+				errors
+			}
+		}
+	`
+
+	// ComponentSupportLevelUpdateMutation updates an existing component support level record
+	ComponentSupportLevelUpdateMutation = `
+		mutation UpdateComponentSupportLevel($id: Uuid!, $level: ComponentSupportLevelValues, $endDate: ISO8601DateTime, $notes: String, $retainManualOverrideFor: Int, $supplierDescription: String) {
+			componentSupportLevelUpdate(
+				input: {id: $id, level: $level, endDate: $endDate, notes: $notes, retainManualOverrideFor: $retainManualOverrideFor, supplierDescription: $supplierDescription}
+			) {
+				componentSupportLevel {
+					id
+					componentId
+					level
+					endDate
+					notes
+					retainManualOverrideFor
+					supplierDescription
 				}
 				errors
 			}
